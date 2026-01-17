@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Voucher</title>
+    <link rel="stylesheet" href="style.css" />
+    <style id="pageStyle"></style>
+    <script src="../../node_modules/qrcode/build/qrcode.min.js"></script>
+  </head>
+  <body>
+    <div id="page">
+      <div id="fields"></div>
+    </div>
+    <script>
+      function applyPage(meta) {
+        const pageEl = document.getElementById('page');
+        const width = meta?.page?.widthPx || 1200;
+        const height = meta?.page?.heightPx || 566;
+        pageEl.style.width = width + 'px';
+        pageEl.style.height = height + 'px';
+        const pageStyle = document.getElementById('pageStyle');
+        if (pageStyle) {
+          pageStyle.textContent = `@page { size: ${width}px ${height}px; margin: 0; }`;
+        }
+        const bg = meta?.backgroundUrl || '';
+        const fit = meta?.backgroundFit || 'cover';
+        pageEl.style.backgroundImage = bg ? `url(${bg})` : 'none';
+        let size = 'cover';
+        if (fit === 'contain') size = 'contain';
+        else if (fit === 'stretch') size = '100% 100%';
+        else if (fit === 'none') size = 'auto';
+        pageEl.style.backgroundSize = size;
+        pageEl.style.backgroundRepeat = 'no-repeat';
+        pageEl.style.backgroundPosition = 'center';
+      }
+
+      function resolveImageSrc(field, data, meta) {
+        if (data && typeof data[field.key] === 'string' && data[field.key].startsWith('data:')) {
+          return data[field.key];
+        }
+        if (data && typeof data[field.key] === 'string' && data[field.key].startsWith('http')) {
+          return data[field.key];
+        }
+        if (meta?.logoUrl && (field.type === 'image' || field.key?.toLowerCase() === 'logo')) {
+          return meta.logoUrl;
+        }
+        if (field.asset) {
+          return field.asset;
+        }
+        return '';
+      }
+
+      async function createQrSrc(field, data) {
+        const key = field.key;
+        const qrKey = `${key}QR`;
+        if (data[qrKey]) return data[qrKey];
+        if (!data[key]) return '';
+        if (typeof QRCode === 'undefined') return '';
+        try {
+          return await QRCode.toDataURL(String(data[key]), { margin: 1, scale: 6 });
+        } catch {
+          return '';
+        }
+      }
+
+      async function buildFieldElement(field, data, meta) {
+        const box = document.createElement('div');
+        box.className = `field-box field-${field.type || 'text'}`;
+        box.style.left = `${field.x || 0}px`;
+        box.style.top = `${field.y || 0}px`;
+        box.style.width = `${field.w || 0}px`;
+        box.style.height = `${field.h || 0}px`;
+        box.style.fontFamily = field.fontFamily || 'Arial, sans-serif';
+        box.style.fontSize = `${field.fontSize || 16}px`;
+        box.style.fontWeight = field.fontWeight || '400';
+        box.style.color = field.color || '#111111';
+        box.style.textAlign = field.align || 'left';
+        box.style.setProperty('--bubble', field.bubbleColor || 'rgba(17, 24, 39, 0.32)');
+
+        if (field.type === 'qr') {
+          const img = document.createElement('img');
+          img.className = 'qr';
+          img.src = (await createQrSrc(field, data)) || '';
+          box.appendChild(img);
+          return box;
+        }
+
+        if (field.type === 'image') {
+          const img = document.createElement('img');
+          img.className = 'img-field';
+          img.src = resolveImageSrc(field, data, meta) || '';
+          box.appendChild(img);
+          return box;
+        }
+
+        const span = document.createElement('div');
+        span.className = 'text';
+        const content = data[field.key] ?? '';
+        span.textContent = content;
+        box.appendChild(span);
+        return box;
+      }
+
+      async function applyLayout(layout, data, meta) {
+        const container = document.getElementById('fields');
+        container.innerHTML = '';
+        const fields = layout?.fields || [];
+        for (const field of fields) {
+          const el = await buildFieldElement(field, data, meta);
+          container.appendChild(el);
+        }
+      }
+
+      window.renderVoucher = async (voucherData, meta, layout) => {
+        applyPage(meta);
+        await applyLayout(layout, voucherData, meta);
+        return true;
+      };
+    </script>
+  </body>
+</html>

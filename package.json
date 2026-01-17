@@ -1,0 +1,17 @@
+{
+  "name": "voucher-electron",
+  "version": "1.0.0",
+  "description": "Offline voucher PDF generator",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test:smoke": "electron tests/smoke.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "electron": "^29.4.0"
+  }
+}

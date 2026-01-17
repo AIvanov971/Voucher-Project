@@ -1,0 +1,25 @@
+<!-- templates/minimal/template.html -->
+<div class="voucher">
+  <div class="heading">
+    <div class="eyebrow">Voucher</div>
+    <div class="title">{{value}}</div>
+  </div>
+  <div class="meta">
+    <div class="label">For</div>
+    <div class="value name field-name">{{userName}}</div>
+  </div>
+  <div class="meta">
+    <div class="label">Expires</div>
+    <div class="value date field-expires">{{expiration}}</div>
+  </div>
+  <div class="meta">
+    <div class="label">Code</div>
+    <div class="value code">{{code}}</div>
+  </div>
+  <div class="note field-note">{{note}}</div>
+  <div class="qr">
+    <div class="qr-label">Scan</div>
+    <img src="{{qrDataUrl}}" alt="QR code" />
+  </div>
+  <div class="footer">Issued by Voucher Maker</div>
+</div>

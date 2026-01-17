@@ -1,0 +1,15 @@
+{
+  "id": "classic",
+  "name": "Classic Gold",
+  "description": "Elegant gold-accent voucher layout",
+  "thumbnail": "thumb.png",
+  "page": {
+    "widthPx": 794,
+    "heightPx": 374
+  },
+  "background": "assets/bg.png",
+  "backgroundFit": "cover",
+  "thumbnailPath": null,
+  "backgroundUrl": "file:///C:/Users/PC/Documents/Voucher%20Project/templates/classic/assets/bg.png",
+  "logo": "assets/logo.png"
+}

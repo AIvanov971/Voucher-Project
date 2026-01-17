@@ -1,0 +1,237 @@
+﻿<!-- renderer/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voucher Maker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="renderer.js"></script>
+  </head>
+  <body>
+    <div id="bannerStack" class="banner-stack"></div>
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="app-title">Voucher Maker</div>
+        <div class="topbar-tabs">
+          <button id="navVouchers" class="nav-btn active">Vouchers</button>
+          <button id="navBuilder" class="nav-btn">Template Builder</button>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button id="themeToggle" class="ghost-btn" aria-label="Toggle theme">Light</button>
+        <button id="helpBtn" class="ghost-btn" aria-label="Help">Help</button>
+      </div>
+    </div>
+
+    <section id="view-vouchers">
+      <header class="app-header">
+        <div>
+          <h1>Voucher Maker</h1>
+          <p>Create, save, and export vouchers with QR and images.</p>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-view-target="create">Create</button>
+        <button class="tab" data-view-target="validate">Validate</button>
+      </nav>
+
+      <div class="view active" data-view="create">
+        <div class="voucher-grid">
+          <aside class="panel saved-list-panel">
+            <div class="saved-header">
+              <h2>Saved Vouchers</h2>
+            </div>
+            <div class="saved-search">
+              <input id="savedSearch" type="text" placeholder="Search..." />
+            </div>
+            <div id="savedList" class="saved-list"></div>
+            <div class="saved-actions">
+              <button id="btnNewVoucher" type="button">New</button>
+              <button id="btnDeleteVoucher" type="button">Delete</button>
+            </div>
+          </aside>
+
+          <section class="panel form-panel">
+            <div class="form-header">
+              <div>
+                <h2>Voucher Details</h2>
+                <div class="template-picker-header small">Template</div>
+                <div id="templateCards" class="template-cards compact"></div>
+                <select id="templateSelect" name="template" style="display: none;"></select>
+              </div>
+              <div class="form-actions">
+                <button id="btnSaveVoucher" type="button" class="primary">Save</button>
+                <button id="btnSaveCopy" type="button">Save As Copy</button>
+                <button id="exportBtn" type="button">Export PDF</button>
+                <button id="exportPngBtn" type="button">Export PNG</button>
+              </div>
+            </div>
+            <span id="statusMsg" class="status"></span>
+            <form id="voucherForm" autocomplete="off">
+              <label>
+                <span>Voucher Code</span>
+                <input type="text" name="VoucherCode" id="inputVoucherCode" />
+              </label>
+              <div id="dynamicFields" class="dynamic-fields"></div>
+              <div id="imageFields" class="image-fields"></div>
+            </form>
+          </section>
+
+          <section class="panel preview-panel">
+            <div class="preview-header">
+              <h2>Live Preview</h2>
+            </div>
+            <div class="preview-wrapper">
+              <iframe id="previewFrame" title="Voucher Preview"></iframe>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" data-view="validate">
+        <section class="panel validate-panel">
+          <div class="validate-header">
+            <div>
+              <h2>Validate Voucher</h2>
+              <p>Check status and redeem with a code.</p>
+            </div>
+            <div class="validate-actions">
+              <input id="validateCodeInput" type="text" placeholder="Enter voucher code" />
+              <button id="validateBtn" type="button" class="primary">Validate</button>
+              <button id="validateRedeemBtn" type="button">Mark as Redeemed</button>
+            </div>
+          </div>
+          <div id="validateResult" class="validate-result">Enter a code to validate.</div>
+          <div class="voucher-list-controls">
+            <div class="filter-group">
+              <label for="voucherStatusFilter">Filter</label>
+              <select id="voucherStatusFilter">
+                <option value="all">All</option>
+                <option value="valid">Not Redeemed</option>
+                <option value="redeemed">Redeemed</option>
+              </select>
+            </div>
+            <button id="refreshVoucherList" type="button">Refresh List</button>
+          </div>
+          <div id="voucherStatusList" class="voucher-status-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-builder" style="display: none;">
+      <header class="app-header">
+        <div>
+          <h1>Template Builder</h1>
+          <p>Manage templates and layouts.</p>
+        </div>
+      </header>
+      <div class="builder-grid">
+        <div class="builder-col">
+          <label>
+            <span>Templates</span>
+            <select id="tplSelect"></select>
+          </label>
+          <div class="builder-actions">
+            <button id="btnNewTemplate" type="button">New Template</button>
+            <button id="btnDuplicateTemplate" type="button">Duplicate Template</button>
+            <button id="btnSaveTemplate" type="button">Save Template</button>
+            <button id="btnAddText" type="button">Add Text Field</button>
+            <button id="btnAddQr" type="button">Add QR Field</button>
+            <button id="btnAddImage" type="button">Add Image Field</button>
+            <button id="btnAddSticker" type="button">Add Sticker</button>
+            <button id="btnSetBackground" type="button">Set Background</button>
+            <button id="btnSetLogo" type="button">Set Logo</button>
+            <label>
+              <span>Background Fit</span>
+              <select id="backgroundFit">
+                <option value="cover">cover</option>
+                <option value="contain">contain</option>
+                <option value="stretch">stretch</option>
+                <option value="none">none</option>
+              </select>
+            </label>
+          </div>
+          <div id="builderStatus" class="status"></div>
+          <div id="fieldsList" class="fields-list"></div>
+        </div>
+        <div class="builder-col">
+          <div id="canvas" class="canvas">
+            <div id="canvasInner"></div>
+          </div>
+        </div>
+        <div class="builder-col">
+          <div class="panel">
+            <h3>Field Properties</h3>
+            <div id="props">
+              <label>Key <input id="propKey" type="text" /></label>
+              <label>Label <input id="propLabel" type="text" /></label>
+              <label>Type
+                <select id="propType">
+                  <option value="text">Text</option>
+                  <option value="qr">QR</option>
+                  <option value="image">Image</option>
+                </select>
+              </label>
+              <label>X <input id="propX" type="number" /></label>
+              <label>Y <input id="propY" type="number" /></label>
+              <label>W <input id="propW" type="number" /></label>
+              <label>H <input id="propH" type="number" /></label>
+              <label>Font Family
+                <select id="propFontFamily">
+                  <option value="Arial, sans-serif">Arial, sans-serif</option>
+                  <option value="Impact, Arial Black, sans-serif">Impact, Arial Black, sans-serif</option>
+                  <option value="Montserrat, Arial, sans-serif">Montserrat, Arial, sans-serif</option>
+                  <option value="Roboto, Arial, sans-serif">Roboto, Arial, sans-serif</option>
+                  <option value="Times New Roman, serif">Times New Roman, serif</option>
+                </select>
+              </label>
+              <label>Font Size <input id="propFont" type="number" /></label>
+              <label>Weight <input id="propWeight" type="text" placeholder="400/700" /></label>
+              <label>Color <input id="propColor" type="color" /></label>
+              <label>Align <input id="propAlign" type="text" placeholder="left/center/right" /></label>
+              <button id="btnDeleteField" type="button">Delete Field</button>
+            </div>
+            <div class="quick-tools">
+              <h4>Font Presets</h4>
+              <div class="font-presets">
+                <button type="button" class="font-preset" data-font="Arial, sans-serif" data-size="16" data-weight="500">Arial</button>
+                <button type="button" class="font-preset" data-font="Impact, Arial Black, sans-serif" data-size="24" data-weight="700">Impact</button>
+                <button type="button" class="font-preset" data-font="Montserrat, Arial, sans-serif" data-size="18" data-weight="700">Montserrat</button>
+                <button type="button" class="font-preset" data-font="Roboto, Arial, sans-serif" data-size="16" data-weight="600">Roboto</button>
+              </div>
+              <h4>Color Palette</h4>
+              <div class="color-palette">
+                <button type="button" class="color-swatch" data-color="#111111" style="background:#111111"></button>
+                <button type="button" class="color-swatch" data-color="#0ea5e9" style="background:#0ea5e9"></button>
+                <button type="button" class="color-swatch" data-color="#ef4444" style="background:#ef4444"></button>
+                <button type="button" class="color-swatch" data-color="#22c55e" style="background:#22c55e"></button>
+                <button type="button" class="color-swatch" data-color="#f59e0b" style="background:#f59e0b"></button>
+                <button type="button" class="color-swatch" data-color="#ffffff" style="background:#ffffff; border:1px solid var(--border)"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h2>Help</h2>
+            <p id="helpVersion"></p>
+          </div>
+          <button id="helpClose" class="ghost-btn" aria-label="Close help">&times;</button>
+        </div>
+        <div class="modal-search">
+          <input id="helpSearch" type="text" placeholder="Search help..." />
+        </div>
+        <div id="helpBody" class="modal-body"></div>
+      </div>
+    </div>
+  </body>
+</html>

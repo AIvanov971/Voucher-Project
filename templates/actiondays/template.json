@@ -1,0 +1,14 @@
+{
+  "id": "actiondays",
+  "name": "Action Days",
+  "page": {
+    "widthPx": 1200,
+    "heightPx": 566
+  },
+  "background": "assets/bg.png",
+  "backgroundFit": "contain",
+  "logo": "assets/logo.png",
+  "description": "",
+  "backgroundUrl": "file:///C:/Users/PC/Documents/Voucher%20Project/templates/actiondays/assets/bg.png",
+  "logoUrl": "file:///C:/Users/PC/Documents/Voucher%20Project/templates/actiondays/assets/logo.png"
+}

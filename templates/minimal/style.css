@@ -1,0 +1,126 @@
+/* templates/minimal/style.css */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px;
+  font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+  background: #fdfbf6;
+  color: #0f172a;
+  display: flex;
+  justify-content: center;
+}
+
+.voucher {
+  width: 700px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 26px 28px;
+  background: linear-gradient(180deg, #ffffff, #fbfbfb);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  position: relative;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px dashed #e5e7eb;
+}
+
+.meta:last-of-type {
+  border-bottom: none;
+}
+
+.label {
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.code {
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  letter-spacing: 0.08em;
+  color: #0ea5e9;
+}
+
+.name {
+  font-size: 20px;
+}
+
+.note {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: #f5f5f5;
+  border-radius: 10px;
+  color: #334155;
+  border: 1px solid #e5e7eb;
+}
+
+.note:empty {
+  display: none;
+}
+
+.qr {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.qr img {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.qr-label {
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.footer {
+  margin-top: 18px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: right;
+}

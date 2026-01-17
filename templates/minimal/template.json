@@ -1,0 +1,12 @@
+{
+  "id": "minimal",
+  "name": "Minimal Clean",
+  "description": "Simple light layout with modern typography",
+  "thumbnail": "thumb.png",
+  "page": {
+    "width": "210mm",
+    "height": "99mm"
+  },
+  "background": "assets/bg.png",
+  "backgroundFit": "cover"
+}

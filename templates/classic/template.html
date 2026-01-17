@@ -1,0 +1,34 @@
+<!-- templates/classic/template.html -->
+<div class="voucher">
+  <div class="voucher-header">
+    <div class="title">Gift Voucher</div>
+    <div class="subtitle">Classic Template</div>
+  </div>
+  <div class="voucher-body">
+    <div class="row">
+      <span class="label">Issued to</span>
+      <span class="value name field-name">{{userName}}</span>
+    </div>
+    <div class="row">
+      <span class="label">For</span>
+      <span class="value amount field-value">{{value}}</span>
+    </div>
+    <div class="row">
+      <span class="label">Expires</span>
+      <span class="value date field-expires">{{expiration}}</span>
+    </div>
+    <div class="row code-row">
+      <span class="label">Code</span>
+      <span class="value code">{{code}}</span>
+    </div>
+    <div class="note field-note">{{note}}</div>
+    <div class="qr-block">
+      <div class="qr-label">Scan to redeem</div>
+      <img class="qr-image" src="{{qrDataUrl}}" alt="QR code" />
+    </div>
+  </div>
+  <div class="voucher-footer">
+    <span class="signature">Authorized</span>
+    <span class="brand">Voucher Maker</span>
+  </div>
+</div>

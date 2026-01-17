@@ -1,0 +1,148 @@
+/* templates/classic/style.css */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px;
+  background: #f3f6fb;
+  font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+  color: #0f172a;
+  display: flex;
+  justify-content: center;
+}
+
+.voucher {
+  width: 740px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  position: relative;
+}
+
+.voucher-header {
+  padding: 24px 28px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(120deg, #0ea5e9 0%, #38bdf8 50%, #0ea5e9 100%);
+  color: #0b1224;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.voucher-body {
+  padding: 24px 28px 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px dashed #d5dce6;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.code-row .code {
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  letter-spacing: 0.08em;
+  font-size: 18px;
+  color: #0ea5e9;
+}
+
+.label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.name {
+  font-size: 22px;
+}
+
+.amount {
+  color: #0ea5e9;
+}
+
+.date {
+  font-size: 18px;
+}
+
+.note {
+  margin-top: 20px;
+  padding: 14px 18px;
+  background: #f1f5f9;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.note:empty {
+  display: none;
+}
+
+.qr-block {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.qr-label {
+  color: #475569;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.qr-image {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.voucher-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px 24px;
+  border-top: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
