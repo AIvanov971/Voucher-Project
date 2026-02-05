@@ -5,76 +5,94 @@ const fs = require('fs');
 const fsp = fs.promises;
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
-const Database = require('better-sqlite3');
 const QRCode = require('qrcode');
 const exporter = require('./src/exporter');
 
-const DEFAULT_PAGE = { widthPx: 1200, heightPx: 566 };
+let Database;
+function loadDbLib() {
+  if (Database !== undefined) return Database;
+  try {
+    // Lazy-load to avoid crashing when native module is not rebuilt
+    Database = require('better-sqlite3');
+  } catch (err) {
+    console.error('better-sqlite3 failed to load. Validation DB features disabled.', err);
+    Database = null;
+  }
+  return Database;
+}
+
+const DEFAULT_PAGE = { widthPx: 794, heightPx: 1123 };
 const DEFAULT_LAYOUT = {
   fields: [
     {
       key: 'RecipientName',
       label: 'Recipient Name',
       type: 'text',
-      x: 55,
-      y: 210,
-      w: 520,
+      x: 40,
+      y: 180,
+      w: 500,
       h: 52,
       fontFamily: 'Impact, Arial Black, sans-serif',
       fontSize: 26,
       fontWeight: '700',
       color: '#111111',
-      align: 'left'
+      align: 'center'
     },
     {
       key: 'Value',
       label: 'Voucher Value',
       type: 'text',
-      x: 55,
-      y: 265,
-      w: 520,
+      x: 40,
+      y: 240,
+      w: 500,
       h: 46,
       fontFamily: 'Montserrat, Arial, sans-serif',
       fontSize: 22,
       fontWeight: '700',
       color: '#111111',
-      align: 'left'
+      align: 'center'
     },
     {
       key: 'IssueDate',
       label: 'Issue Date',
       type: 'text',
-      x: 55,
-      y: 322,
+      x: 40,
+      y: 300,
       w: 260,
       h: 36,
       fontFamily: 'Arial, sans-serif',
       fontSize: 18,
       fontWeight: '600',
       color: '#222222',
-      align: 'left'
+      align: 'center'
     },
     {
       key: 'Validity',
       label: 'Valid Until',
       type: 'text',
-      x: 55,
-      y: 360,
+      x: 40,
+      y: 340,
       w: 260,
       h: 36,
       fontFamily: 'Arial, sans-serif',
       fontSize: 18,
       fontWeight: '600',
       color: '#222222',
-      align: 'left'
+      align: 'center'
     },
-    { key: 'InstagramLink', label: 'Instagram Link', type: 'qr', x: 690, y: 370, w: 130, h: 130 },
-    { key: 'FacebookLink', label: 'Facebook Link', type: 'qr', x: 840, y: 370, w: 130, h: 130 },
-    { key: 'Logo', label: 'Logo', type: 'image', x: 930, y: 70, w: 190, h: 120 }
+    { key: 'InstagramLink', label: 'Instagram Link', type: 'qr', x: 520, y: 300, w: 120, h: 120 },
+    { key: 'FacebookLink', label: 'Facebook Link', type: 'qr', x: 650, y: 300, w: 120, h: 120 },
+    { key: 'Logo', label: 'Logo', type: 'image', x: 560, y: 70, w: 160, h: 110 }
   ]
 };
 
-const resolveTemplatesRoot = exporter.resolveTemplatesRoot;
+function resolveTemplatesRoot() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'templates');
+  }
+  return path.join(__dirname, 'templates');
+}
+
 const templatesDir = resolveTemplatesRoot();
 const templateCache = new Map();
 const templateMetaCache = new Map();
@@ -123,7 +141,9 @@ function sanitizeTemplateId(id) {
 }
 
 function ensureTemplatesRoot() {
-  fs.mkdirSync(templatesDir, { recursive: true });
+  if (!app.isPackaged) {
+    fs.mkdirSync(templatesDir, { recursive: true });
+  }
 }
 
 function numberFromPage(value) {
@@ -499,6 +519,7 @@ function generateCode() {
 
 function codeExists(dbInstance, code) {
   if (!code) return false;
+  if (!dbInstance) return false;
   const stmt = dbInstance.prepare('SELECT id FROM vouchers WHERE code = ? LIMIT 1');
   const row = stmt.get(code);
   return Boolean(row);
@@ -520,11 +541,13 @@ async function exportVoucher(format, payload) {
 }
 
 function getDb() {
+  const Lib = loadDbLib();
+  if (!Lib) return null;
   if (db) return db;
   const userDataDir = app.getPath('userData');
   dbPath = path.join(userDataDir, 'vouchers.db');
   fs.mkdirSync(userDataDir, { recursive: true });
-  db = new Database(dbPath);
+  db = new Lib(dbPath);
   db.pragma('journal_mode = WAL');
   ensureSchema(db);
   return db;
@@ -574,6 +597,7 @@ function ensureSchema(dbInstance) {
 
 function saveVoucher(data, templateId) {
   const dbInstance = getDb();
+  if (!dbInstance) throw new Error('Database unavailable (better-sqlite3 not loaded)');
   const now = new Date().toISOString();
   const codeToUse = normalizeCode(data.code) || generateUniqueCode(dbInstance);
   const stmt = dbInstance.prepare(
@@ -593,6 +617,7 @@ function saveVoucher(data, templateId) {
 
 function listVouchers(limit = 20) {
   const dbInstance = getDb();
+  if (!dbInstance) return [];
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers ORDER BY createdAt DESC LIMIT ?'
   );
@@ -601,6 +626,7 @@ function listVouchers(limit = 20) {
 
 function getVoucherById(id) {
   const dbInstance = getDb();
+  if (!dbInstance) return null;
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE id = ?'
   );
@@ -609,6 +635,7 @@ function getVoucherById(id) {
 
 function getVoucherByCode(code) {
   const dbInstance = getDb();
+  if (!dbInstance) return null;
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE code = ?'
   );
@@ -954,6 +981,7 @@ ipcMain.handle('validate-code', (_event, code) => {
 
 ipcMain.handle('redeem-voucher', (_event, id) => {
   const dbInstance = getDb();
+  if (!dbInstance) return { ok: false, error: 'Database unavailable (better-sqlite3 missing)' };
   const stmt = dbInstance.prepare('UPDATE vouchers SET redeemedAt = ? WHERE id = ?');
   try {
     const now = new Date().toISOString();

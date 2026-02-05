@@ -1,17 +1,45 @@
 {
-  "name": "voucher-electron",
+  "name": "LNvoucher-maker",
   "version": "1.0.0",
   "description": "Offline voucher PDF generator",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test:smoke": "electron tests/smoke.js"
+    "test:smoke": "electron tests/smoke.js",
+    "pack": "electron-builder --dir --win",
+    "dist": "electron-builder --win"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.0",
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
-    "electron": "^29.4.0"
+    "electron": "^29.4.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.voucher.maker",
+    "productName": "Voucher Maker",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "templates/**/*",
+      "node_modules/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "templates",
+        "to": "templates"
+      }
+    ],
+    "win": {
+      "icon": "assets/app-icon.ico"
+    }
   }
 }

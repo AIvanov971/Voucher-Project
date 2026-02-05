@@ -13,13 +13,19 @@
     <div id="bannerStack" class="banner-stack"></div>
     <div class="topbar">
       <div class="topbar-left">
-        <div class="app-title">Voucher Maker</div>
-        <div class="topbar-tabs">
-          <button id="navVouchers" class="nav-btn active">Vouchers</button>
-          <button id="navBuilder" class="nav-btn">Template Builder</button>
-        </div>
+        <div class="app-icon">LN</div>
+        <div class="app-title">LN Voucher</div>
+        <div id="testBadge" class="badge test" hidden>TEST MODE</div>
+      </div>
+      <div class="topbar-center topbar-tabs">
+        <button id="navVouchers" class="nav-btn active">Vouchers</button>
+        <button id="navBuilder" class="nav-btn">Template Builder</button>
       </div>
       <div class="topbar-right">
+        <div class="version-block">
+          <span id="versionTag" class="muted version-tag">v1.0.0-test</span>
+          <span id="versionNote" class="version-note">Test version – feedback welcome</span>
+        </div>
         <button id="themeToggle" class="ghost-btn" aria-label="Toggle theme">Light</button>
         <button id="helpBtn" class="ghost-btn" aria-label="Help">Help</button>
       </div>
@@ -41,7 +47,7 @@
       <div class="view active" data-view="create">
         <div class="voucher-grid">
           <aside class="panel saved-list-panel">
-            <div class="saved-header">
+            <div class="panel-header">
               <h2>Saved Vouchers</h2>
             </div>
             <div class="saved-search">
@@ -50,42 +56,60 @@
             <div id="savedList" class="saved-list"></div>
             <div class="saved-actions">
               <button id="btnNewVoucher" type="button">New</button>
-              <button id="btnDeleteVoucher" type="button">Delete</button>
+              <button id="btnDeleteVoucher" type="button" class="danger">Delete</button>
             </div>
           </aside>
 
           <section class="panel form-panel">
-            <div class="form-header">
-              <div>
-                <h2>Voucher Details</h2>
-                <div class="template-picker-header small">Template</div>
-                <div id="templateCards" class="template-cards compact"></div>
-                <select id="templateSelect" name="template" style="display: none;"></select>
-              </div>
-              <div class="form-actions">
-                <button id="btnSaveVoucher" type="button" class="primary">Save</button>
-                <button id="btnSaveCopy" type="button">Save As Copy</button>
-                <button id="exportBtn" type="button">Export PDF</button>
-                <button id="exportPngBtn" type="button">Export PNG</button>
-              </div>
+            <div class="panel-header">
+              <h2>Voucher Details</h2>
+              <div class="template-picker-header small">Template</div>
+              <div id="templateCards" class="template-cards compact"></div>
+              <select id="templateSelect" name="template" style="display: none;"></select>
             </div>
             <span id="statusMsg" class="status"></span>
             <form id="voucherForm" autocomplete="off">
-              <label>
-                <span>Voucher Code</span>
-                <input type="text" name="VoucherCode" id="inputVoucherCode" />
-              </label>
-              <div id="dynamicFields" class="dynamic-fields"></div>
-              <div id="imageFields" class="image-fields"></div>
+              <div class="form-section">
+                <div class="form-section-title">Recipient / Core</div>
+                <label>
+                  <span>Voucher Code</span>
+                  <input type="text" name="VoucherCode" id="inputVoucherCode" required />
+                  <small class="helper" data-helper-for="VoucherCode"></small>
+                </label>
+                <div id="dynamicFields" class="dynamic-fields"></div>
+              </div>
+              <div class="form-section">
+                <div class="form-section-title">Social Links</div>
+                <label>
+                  <span>Instagram URL</span>
+                  <input type="url" name="InstagramLink" id="inputInstagram" placeholder="https://instagram.com/" />
+                </label>
+                <label>
+                  <span>Facebook URL</span>
+                  <input type="url" name="FacebookLink" id="inputFacebook" placeholder="https://facebook.com/" />
+                </label>
+              </div>
+              <div class="form-section">
+                <div class="form-section-title">Images</div>
+                <div id="imageFields" class="image-fields"></div>
+              </div>
             </form>
+            <div class="form-actions sticky-actions">
+              <button id="btnSaveVoucher" type="button" class="primary">Save</button>
+              <button id="btnSaveCopy" type="button">Save As Copy</button>
+            </div>
           </section>
 
           <section class="panel preview-panel">
             <div class="preview-header">
               <h2>Live Preview</h2>
             </div>
-            <div class="preview-wrapper">
+            <div class="preview-wrapper sticky">
               <iframe id="previewFrame" title="Voucher Preview"></iframe>
+            </div>
+            <div class="export-actions">
+              <button id="exportBtn" type="button" class="primary">Export PDF</button>
+              <button id="exportPngBtn" type="button">Export PNG</button>
             </div>
           </section>
         </div>
@@ -143,6 +167,7 @@
             <button id="btnAddImage" type="button">Add Image Field</button>
             <button id="btnAddSticker" type="button">Add Sticker</button>
             <button id="btnSetBackground" type="button">Set Background</button>
+            <button id="btnRefreshBackground" type="button">Refresh Background</button>
             <button id="btnSetLogo" type="button">Set Logo</button>
             <label>
               <span>Background Fit</span>

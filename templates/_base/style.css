@@ -29,25 +29,9 @@ body {
   overflow: hidden;
   white-space: normal;
   line-height: 1.2;
-  padding: 6px 10px;
-  border-radius: 12px;
-  isolation: isolate;
-}
-
-.field-box::before {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  background: var(--bubble, rgba(17, 24, 39, 0.32));
-  border-radius: 14px;
-  backdrop-filter: blur(6px);
-  filter: saturate(1.05);
-  z-index: 0;
-}
-
-.field-box > * {
-  position: relative;
-  z-index: 1;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .field-box .text {

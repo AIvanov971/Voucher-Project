@@ -6,7 +6,7 @@ const fsp = fs.promises;
 const { pathToFileURL } = require('url');
 const QRCode = require('qrcode');
 
-const DEFAULT_PAGE = { widthPx: 1200, heightPx: 566 };
+const DEFAULT_PAGE = { widthPx: 794, heightPx: 1123 };
 const metaCache = new Map();
 const layoutCache = new Map();
 

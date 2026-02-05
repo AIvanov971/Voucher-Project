@@ -17,6 +17,8 @@ const voucherForm = document.getElementById('voucherForm');
 const dynamicFields = document.getElementById('dynamicFields');
 const imageFields = document.getElementById('imageFields');
 const inputVoucherCode = document.getElementById('inputVoucherCode');
+const inputInstagram = document.getElementById('inputInstagram');
+const inputFacebook = document.getElementById('inputFacebook');
 const tabButtons = document.querySelectorAll('[data-view-target]');
 const views = document.querySelectorAll('[data-view]');
 const navVouchers = document.getElementById('navVouchers');
@@ -30,6 +32,9 @@ const helpSearch = document.getElementById('helpSearch');
 const helpBody = document.getElementById('helpBody');
 const helpClose = document.getElementById('helpClose');
 const helpVersion = document.getElementById('helpVersion');
+const versionTag = document.getElementById('versionTag');
+const versionNote = document.getElementById('versionNote');
+const testBadge = document.getElementById('testBadge');
 // Validate
 const validateCodeInput = document.getElementById('validateCodeInput');
 const validateBtn = document.getElementById('validateBtn');
@@ -50,6 +55,7 @@ const btnAddImage = document.getElementById('btnAddImage');
 const btnAddSticker = document.getElementById('btnAddSticker');
 const btnDeleteField = document.getElementById('btnDeleteField');
 const btnSetBackground = document.getElementById('btnSetBackground');
+const btnRefreshBackground = document.getElementById('btnRefreshBackground');
 const btnSetLogo = document.getElementById('btnSetLogo');
 const backgroundFitSelect = document.getElementById('backgroundFit');
 const fieldsList = document.getElementById('fieldsList');
@@ -102,10 +108,13 @@ const state = {
     templates: [],
     meta: null,
     layout: null,
-    selectedField: null
+    selectedField: null,
+    cacheBust: 0
   },
   theme: 'dark',
-  helpContent: ''
+  helpContent: '',
+  testMode: false,
+  version: ''
 };
 
 function escapeHtml(value) {
@@ -145,10 +154,29 @@ function applyTheme(theme) {
   if (themeToggle) themeToggle.textContent = theme === 'light' ? 'Dark' : 'Light';
 }
 
+function logTest(action, payload) {
+  if (!state.testMode) return;
+  console.log(`[TEST MODE] ${action}`, payload || '');
+}
+
+function updateBadges() {
+  if (testBadge) testBadge.hidden = !state.testMode;
+  const baseVersion = state.version || '1.0.0';
+  const suffix = state.testMode ? '-test' : '';
+  if (versionTag) {
+    versionTag.textContent = `v${baseVersion}${suffix || ''}`;
+  }
+  if (versionNote) {
+    versionNote.textContent = state.testMode ? 'Test version - feedback welcome' : 'Ready for use';
+  }
+}
+
 async function loadTheme() {
   try {
     const res = await window.api.settings.get();
     const savedTheme = res?.settings?.theme;
+    const savedTest = res?.settings?.testMode;
+    state.testMode = typeof savedTest === 'boolean' ? savedTest : true;
     if (savedTheme) {
       applyTheme(savedTheme);
     } else {
@@ -159,6 +187,7 @@ async function loadTheme() {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     applyTheme(prefersDark ? 'dark' : 'light');
   }
+  updateBadges();
 }
 
 async function toggleTheme() {
@@ -404,6 +433,9 @@ async function renderDynamicForm() {
       imageFieldDefs.push(field);
       return;
     }
+    if (field.key === 'InstagramLink' || field.key === 'FacebookLink') {
+      return;
+    }
     const value = state.currentVoucher.data[field.key] || '';
     const inputEl = createInputField(field, value);
     dynamicFields.appendChild(inputEl);
@@ -426,7 +458,12 @@ async function renderDynamicForm() {
 }
 
 function updateVoucherData(key, value) {
-  state.currentVoucher.data = { ...(state.currentVoucher.data || {}), [key]: value };
+  const next = { ...(state.currentVoucher.data || {}), [key]: value };
+  if (key === 'VoucherCode' || key === 'Code') {
+    next.VoucherCode = value;
+    next.Code = value;
+  }
+  state.currentVoucher.data = next;
 }
 
 function handleFieldInput(event) {
@@ -438,8 +475,10 @@ function handleFieldInput(event) {
 
 function applyFormValues() {
   if (inputVoucherCode) {
-    inputVoucherCode.value = state.currentVoucher.data?.VoucherCode || '';
+    inputVoucherCode.value = state.currentVoucher.data?.VoucherCode || state.currentVoucher.data?.Code || '';
   }
+  if (inputInstagram) inputInstagram.value = state.currentVoucher.data?.InstagramLink || '';
+  if (inputFacebook) inputFacebook.value = state.currentVoucher.data?.FacebookLink || '';
   const values = state.currentVoucher.data || {};
   dynamicFields.querySelectorAll('input, textarea').forEach((input) => {
     const key = input.name;
@@ -447,6 +486,21 @@ function applyFormValues() {
       input.value = input.type === 'date' ? normalizeDateValue(values[key]) : values[key] || '';
     }
   });
+}
+
+function validateVoucherForm() {
+  let ok = true;
+  const helper = document.querySelector('[data-helper-for="VoucherCode"]');
+  const codeVal = inputVoucherCode?.value?.trim();
+  if (!codeVal) {
+    ok = false;
+    if (helper) helper.textContent = 'Required';
+    inputVoucherCode?.classList.add('error');
+  } else {
+    if (helper) helper.textContent = '';
+    inputVoucherCode?.classList.remove('error');
+  }
+  return ok;
 }
 
 async function loadSavedList() {
@@ -462,7 +516,7 @@ function renderSavedList() {
   if (!state.vouchers.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No vouchers saved.';
+    empty.textContent = 'No saved vouchers yet.';
     savedList.appendChild(empty);
     return;
   }
@@ -509,10 +563,17 @@ async function loadVoucher(id) {
 
 function newVoucher() {
   const newId = `V-${Date.now()}`;
+  const codeValue = `VC-${Date.now()}`;
   state.currentVoucher = {
     id: newId,
     templateId: state.currentTemplateId || (state.templates[0]?.id || null),
-    data: { VoucherCode: `VC-${Date.now()}`, IssueDate: new Date().toISOString().slice(0, 10) },
+    data: {
+      VoucherCode: codeValue,
+      Code: codeValue,
+      IssueDate: new Date().toISOString().slice(0, 10),
+      InstagramLink: 'https://www.instagram.com/actiondays.kalofer?igsh=MWxtYWJzMzg4c2Iy',
+      FacebookLink: 'https://www.facebook.com/share/1AFAZSUgzW/'
+    },
     images: {}
   };
   state.selectedVoucherId = null;
@@ -525,6 +586,10 @@ function newVoucher() {
 }
 
 async function saveCurrentVoucher(asCopy = false) {
+  if (!validateVoucherForm()) {
+    setStatus('Please fill required fields', true);
+    return;
+  }
   if (!state.currentTemplateId) {
     setStatus('Select a template first', true);
     return;
@@ -533,10 +598,18 @@ async function saveCurrentVoucher(asCopy = false) {
     ...state.currentVoucher,
     templateId: state.currentTemplateId
   };
+  if (!payload.data) payload.data = {};
+  if (payload.data.VoucherCode && !payload.data.Code) {
+    payload.data.Code = payload.data.VoucherCode;
+  }
+  if (payload.data.Code && !payload.data.VoucherCode) {
+    payload.data.VoucherCode = payload.data.Code;
+  }
   if (asCopy || !payload.id) {
     delete payload.id;
     if (!payload.data) payload.data = {};
     payload.data.VoucherCode = payload.data.VoucherCode || `VC-${Date.now()}`;
+    payload.data.Code = payload.data.VoucherCode;
   }
   const res = await window.api.vouchers.save(payload);
   if (res?.ok) {
@@ -553,6 +626,7 @@ async function saveCurrentVoucher(asCopy = false) {
     applyFormValues();
     renderPreview();
     setStatus('Voucher saved');
+    logTest('save_voucher', payload);
     await loadVoucherStatusList();
   } else {
     setStatus(res?.error || 'Save failed', true);
@@ -576,6 +650,7 @@ async function saveCopyCurrent() {
       applyFormValues();
       renderPreview();
       setStatus('Saved as copy');
+      logTest('save_copy', res.item);
       await loadVoucherStatusList();
       return;
     }
@@ -593,6 +668,7 @@ async function deleteCurrentVoucher() {
     await loadSavedList();
     newVoucher();
     setStatus('Voucher deleted');
+    logTest('delete_voucher', state.selectedVoucherId);
     await loadVoucherStatusList();
   } else {
     setStatus(res?.error || 'Delete failed', true);
@@ -665,34 +741,45 @@ async function renderPreview() {
   const tpl = await ensureTemplateData(state.currentTemplateId);
   if (!tpl) return;
   const data = buildPreviewData();
+  const metaForPreview = { ...(tpl.meta || {}) };
+  if (state.builder.cacheBust && metaForPreview.id === state.builder.meta?.id) {
+    if (metaForPreview.backgroundUrl) {
+      const sep = metaForPreview.backgroundUrl.includes('?') ? '&' : '?';
+      metaForPreview.backgroundUrl = `${metaForPreview.backgroundUrl}${sep}cb=${state.builder.cacheBust}`;
+    }
+  }
   const frameWin = previewFrame.contentWindow;
   if (frameWin && typeof frameWin.renderVoucher === 'function') {
-    frameWin.renderVoucher(data, tpl.meta, tpl.layout);
-    applyPreviewScale(tpl.meta);
+    frameWin.renderVoucher(data, metaForPreview, tpl.layout);
+    applyPreviewScale(metaForPreview);
   } else {
     previewFrame.contentWindow?.addEventListener('DOMContentLoaded', () => {
-      previewFrame.contentWindow?.renderVoucher?.(data, tpl.meta, tpl.layout);
-      applyPreviewScale(tpl.meta);
+      previewFrame.contentWindow?.renderVoucher?.(data, metaForPreview, tpl.layout);
+      applyPreviewScale(metaForPreview);
     });
   }
 }
 
-function applyPreviewScale(meta) {
-  try {
-    const frameWin = previewFrame?.contentWindow;
-    const pageEl = frameWin?.document?.getElementById('page');
-    if (!pageEl) return;
-    const width = meta?.page?.widthPx || 1200;
-    const height = meta?.page?.heightPx || 566;
-    const frameWidth = previewFrame.clientWidth || previewFrame.parentElement?.clientWidth || width;
-    const scale = Math.min(frameWidth / width, 1);
-    pageEl.style.transformOrigin = 'top left';
-    pageEl.style.transform = `scale(${scale})`;
-    previewFrame.style.height = `${Math.ceil(height * scale) + 16}px`;
-  } catch (err) {
-    console.error(err);
+  function applyPreviewScale(meta) {
+    try {
+      const frameWin = previewFrame?.contentWindow;
+      const pageEl = frameWin?.document?.getElementById('page');
+      if (!pageEl) return;
+      const width = meta?.page?.widthPx || 1200;
+      const height = meta?.page?.heightPx || 566;
+      const containerWidth = previewFrame.parentElement?.clientWidth || previewFrame.clientWidth || width;
+      const available = Math.max(containerWidth - 12, 200);
+      const scale = Math.min(available / width, 1);
+      previewFrame.style.width = '100%';
+      previewFrame.style.maxWidth = '100%';
+      pageEl.style.transformOrigin = 'top left';
+      pageEl.style.transform = `scale(${scale})`;
+      previewFrame.style.height = `${Math.ceil(height * scale) + 16}px`;
+      pageEl.style.margin = '0 auto';
+    } catch (err) {
+      console.error(err);
+    }
   }
-}
 
 async function handleExport(format = 'pdf') {
   if (!state.currentTemplateId) return;
@@ -703,6 +790,7 @@ async function handleExport(format = 'pdf') {
       : await window.voucherAPI.exportPdf(data, state.currentTemplateId, state.currentVoucher.images || {});
   if (res?.ok) {
     setStatus(`Exported to ${res.outPath || 'Downloads'}`);
+    logTest(`export_${format}`, res.outPath || '');
   } else {
     setStatus(res?.error || 'Export failed', true);
   }
@@ -924,14 +1012,17 @@ function deepClone(obj) {
 
 function renderBuilderBackground() {
   if (!canvasInner || !state.builder.meta) return;
-  const page = state.builder.meta.page || { widthPx: 1200, heightPx: 566 };
-  canvas.style.width = `${page.widthPx || 1200}px`;
-  canvas.style.height = `${page.heightPx || 566}px`;
-  canvasInner.style.width = `${page.widthPx || 1200}px`;
-  canvasInner.style.height = `${page.heightPx || 566}px`;
+  const page = state.builder.meta.page || { widthPx: 794, heightPx: 1123 };
+  canvas.style.width = `${page.widthPx || 794}px`;
+  canvas.style.height = `${page.heightPx || 1123}px`;
+  canvasInner.style.width = `${page.widthPx || 794}px`;
+  canvasInner.style.height = `${page.heightPx || 1123}px`;
   const bg = state.builder.meta.backgroundUrl || state.builder.meta.background;
   const fit = state.builder.meta.backgroundFit || 'cover';
-  canvasInner.style.backgroundImage = bg ? `url(${bg})` : 'none';
+  const sep = bg && bg.includes('?') ? '&' : '?';
+  const cacheBust = state.builder.cacheBust || 0;
+  const bgUrl = bg ? `${bg}${sep}cb=${cacheBust}` : '';
+  canvasInner.style.backgroundImage = bgUrl ? `url(${bgUrl})` : 'none';
   let size = 'cover';
   if (fit === 'contain') size = 'contain';
   else if (fit === 'stretch') size = '100% 100%';
@@ -965,7 +1056,7 @@ function updatePropsPanel() {
   propFont.value = f?.fontSize ?? '';
   propWeight.value = f?.fontWeight ?? '';
   propColor.value = f?.color || '#111111';
-  propAlign.value = f?.align ?? '';
+  propAlign.value = f?.align ?? 'center';
   const textControlsDisabled = !f || f.type !== 'text';
   [propFontFamily, propFont, propWeight, propColor, propAlign].forEach((el) => {
     el.disabled = textControlsDisabled;
@@ -1194,7 +1285,7 @@ function applyPropChanges() {
   f.fontSize = parseFloat(propFont.value) || f.fontSize || 14;
   f.fontWeight = propWeight.value || f.fontWeight || '400';
   f.color = propColor.value || f.color || '#111111';
-  f.align = propAlign.value || f.align || 'left';
+  f.align = propAlign.value || f.align || 'center';
 
   renderBuilderFields();
   selectBuilderField(f);
@@ -1229,7 +1320,7 @@ async function handleAddSticker() {
 
 function addField(type) {
   if (!state.builder.layout) state.builder.layout = { fields: [] };
-  const defaults = {
+const defaults = {
     key: `Field${state.builder.layout.fields.length + 1}`,
     label: 'Field',
     type,
@@ -1241,7 +1332,7 @@ function addField(type) {
     fontSize: 16,
     fontWeight: '600',
     color: '#111111',
-    align: 'left'
+    align: 'center'
   };
   const field = { ...defaults };
   state.builder.layout.fields.push(field);
@@ -1261,6 +1352,7 @@ async function saveBuilderTemplate() {
       if (state.currentTemplateId === id) {
         renderPreview();
       }
+      logTest('save_template', id);
     } else {
       setBuilderStatus(res?.error || 'Save failed', true);
     }
@@ -1296,6 +1388,7 @@ async function loadBuilderLayout() {
     const meta = await window.api.templates.readMeta(id);
     state.builder.layout = JSON.parse(JSON.stringify(layout || { fields: [] }));
     state.builder.meta = { ...(meta || {}) };
+    state.builder.cacheBust = Date.now();
     state.builder.selectedField = null;
     backgroundFitSelect.value = state.builder.meta.backgroundFit || 'cover';
     renderBuilderBackground();
@@ -1312,6 +1405,7 @@ async function handleSetBackground() {
   const res = await window.api.templates.setBackground(id);
   if (res?.ok && res.meta) {
     state.builder.meta = res.meta;
+    state.builder.cacheBust = Date.now();
     backgroundFitSelect.value = state.builder.meta.backgroundFit || 'cover';
     renderBuilderBackground();
     setBuilderStatus('Background updated');
@@ -1335,6 +1429,26 @@ async function handleSetLogo() {
     setBuilderStatus('Logo selection canceled');
   } else {
     setBuilderStatus(res?.error || 'Failed to set logo', true);
+  }
+}
+
+async function handleRefreshBackground() {
+  const id = tplSelect.value;
+  if (!id) return;
+  try {
+    const meta = await window.api.templates.readMeta(id);
+    state.builder.meta = meta || state.builder.meta || {};
+    state.builder.cacheBust = Date.now();
+    renderBuilderBackground();
+    if (state.currentTemplateId === id) {
+      await ensureTemplateData(id);
+      state.templateMeta.set(id, meta || {});
+      renderPreview();
+    }
+    setBuilderStatus('Background refreshed');
+  } catch (err) {
+    console.error(err);
+    setBuilderStatus(err.message, true);
   }
 }
 
@@ -1406,10 +1520,17 @@ async function init() {
   fetchHelp();
   try {
     const v = await window.api.app.getVersion();
-    if (v?.ok && helpVersion) helpVersion.textContent = `Version ${v.version}`;
+    if (v?.ok) {
+      state.version = v.version;
+    }
   } catch (err) {
     console.error(err);
   }
+  const versionText = state.version || '1.0.0';
+  if (helpVersion) {
+    helpVersion.textContent = `LN Voucher - Version ${versionText}${state.testMode ? ' - Test version - feedback welcome' : ''}`;
+  }
+  updateBadges();
   previewFrame.src = '../templates/_base/template.html';
   previewFrame.addEventListener('load', () => {
     state.previewReady = true;
@@ -1453,6 +1574,17 @@ async function init() {
   exportPngBtn?.addEventListener('click', () => handleExport('png'));
   inputVoucherCode?.addEventListener('input', (e) => {
     updateVoucherData('VoucherCode', e.target.value);
+    const helper = document.querySelector('[data-helper-for="VoucherCode"]');
+    if (helper) helper.textContent = '';
+    e.target.classList.remove('error');
+    renderPreview();
+  });
+  inputInstagram?.addEventListener('input', (e) => {
+    updateVoucherData('InstagramLink', e.target.value);
+    renderPreview();
+  });
+  inputFacebook?.addEventListener('input', (e) => {
+    updateVoucherData('FacebookLink', e.target.value);
     renderPreview();
   });
   validateBtn?.addEventListener('click', handleValidate);
@@ -1473,6 +1605,7 @@ async function init() {
   btnAddSticker?.addEventListener('click', handleAddSticker);
   btnDeleteField?.addEventListener('click', deleteSelectedField);
   btnSetBackground?.addEventListener('click', handleSetBackground);
+  btnRefreshBackground?.addEventListener('click', handleRefreshBackground);
   btnSetLogo?.addEventListener('click', handleSetLogo);
   backgroundFitSelect?.addEventListener('change', handleBackgroundFitChange);
   canvas?.addEventListener('click', () => {
@@ -1515,6 +1648,12 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
       e.preventDefault();
       handleExport('pdf');
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (state.previewReady) {
+      renderPreview();
     }
   });
 }

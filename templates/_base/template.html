@@ -74,8 +74,7 @@
         box.style.fontSize = `${field.fontSize || 16}px`;
         box.style.fontWeight = field.fontWeight || '400';
         box.style.color = field.color || '#111111';
-        box.style.textAlign = field.align || 'left';
-        box.style.setProperty('--bubble', field.bubbleColor || 'rgba(17, 24, 39, 0.32)');
+        box.style.textAlign = field.align || 'center';
 
         if (field.type === 'qr') {
           const img = document.createElement('img');
