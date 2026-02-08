@@ -283,7 +283,7 @@ label .helper {
 }
 
 .template-picker {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .template-picker-header {
@@ -295,19 +295,40 @@ label .helper {
 
 .template-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.template-control-row {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  margin-bottom: 10px;
+}
+
+.template-control-row .template-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .template-card {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 10px;
   background: var(--surface2);
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
   display: grid;
-  gap: 8px;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
 }
 
 .template-card:hover {
@@ -322,16 +343,15 @@ label .helper {
 }
 
 .template-thumb {
-  width: 100%;
-  height: 90px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(14, 165, 233, 0.25));
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.35));
+  display: grid;
+  place-items: center;
   color: var(--primaryText);
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 800;
+  font-size: 12px;
   overflow: hidden;
 }
 
@@ -394,14 +414,15 @@ input.error {
   padding: 8px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   position: relative;
-  max-height: 100%;
+  max-height: 70vh;
+  overflow: auto;
 }
 
 .export-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 10px;
+  margin: 8px 0 12px;
 }
 
 .status {
@@ -475,6 +496,19 @@ input.error {
 }
 
 #helpModal.open {
+  display: flex;
+}
+
+#valueModal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+#valueModal.open {
   display: flex;
 }
 
@@ -658,8 +692,20 @@ input.error {
 
 .saved-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.value-select-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
+  align-items: center;
+}
+
+.value-select-row button {
+  height: 38px;
+  padding: 0 12px;
 }
 
 .saved-header {
@@ -884,12 +930,48 @@ input.error {
   color: var(--text);
 }
 
+/* Builder responsive overrides */
+@media (max-width: 1200px) {
+  .builder-grid {
+    grid-template-columns: minmax(230px, 26vw) 1fr;
+    grid-template-areas:
+      "tools canvas"
+      "props props";
+  }
+  .builder-col.tools {
+    grid-area: tools;
+  }
+  .builder-col.props {
+    grid-area: props;
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .builder-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "canvas";
+  }
+  .builder-col.tools,
+  .builder-col.props {
+    display: none;
+    position: static;
+    max-height: none;
+  }
+  .builder-toolbar {
+    top: 52px;
+  }
+}
+
 /* Builder */
 .builder-grid {
   display: grid;
-  grid-template-columns: 260px 1fr 260px;
+  grid-template-columns: minmax(240px, 280px) minmax(420px, 1fr) minmax(240px, 300px);
   gap: 12px;
-  padding: 18px 22px 26px;
+  padding: 16px 16px 22px;
+  align-items: start;
 }
 
 .builder-col {
@@ -898,12 +980,96 @@ input.error {
   border-radius: var(--radius);
   padding: 12px;
   box-shadow: var(--shadow);
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  position: sticky;
+  top: 72px;
+  min-width: 0;
+}
+
+.builder-col.canvas-col {
+  position: relative;
+  max-height: none;
+  overflow: hidden;
 }
 
 .builder-actions {
   display: grid;
   gap: 8px;
   margin: 10px 0;
+}
+
+.builder-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px 0;
+  gap: 10px;
+  position: sticky;
+  top: 56px;
+  background: linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 70%, transparent) 100%);
+  z-index: 15;
+}
+
+.builder-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  height: auto;
+}
+
+.scale-indicator {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  min-width: 64px;
+  text-align: center;
+}
+
+#canvas {
+  margin: 0 auto;
+  transform-origin: top center;
+}
+
+.canvas-col {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.builder-col.tools.collapsed,
+.builder-col.props.collapsed {
+  display: none;
+}
+
+.builder-col.drawer-open {
+  display: block !important;
+  position: fixed;
+  top: 68px;
+  bottom: 10px;
+  width: min(360px, 90vw);
+  max-height: calc(100vh - 88px);
+  z-index: 40;
+  overflow: auto;
+  box-shadow: var(--shadow);
+}
+
+#builderToolsCol.drawer-open {
+  left: 12px;
+}
+
+#builderPropsCol.drawer-open {
+  right: 12px;
 }
 
 .quick-tools {
@@ -1010,18 +1176,18 @@ input.error {
 
 .canvas {
   position: relative;
-  width: 1200px;
-  height: 566px;
-  max-width: 100%;
+  width: 100%;
+  height: auto;
+  min-height: 320px;
   border: 1px dashed var(--border);
   background: var(--surface2);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .canvas #canvasInner {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
 }
 
 .field-box {
@@ -1032,7 +1198,7 @@ input.error {
   font-size: 12px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   border-radius: 6px;
   pointer-events: auto;
 }

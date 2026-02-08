@@ -5,6 +5,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const os = require('os');
 const QRCode = require('qrcode');
 const exporter = require('./src/exporter');
 
@@ -97,6 +98,8 @@ const templatesDir = resolveTemplatesRoot();
 const templateCache = new Map();
 const templateMetaCache = new Map();
 const layoutCache = new Map();
+const HIDDEN_TEMPLATES = new Set(['classic', 'minimal']);
+const VALUE_TABLE = 'value_options';
 
 let db;
 let dbPath;
@@ -187,7 +190,7 @@ function getTemplateIds() {
   ensureTemplatesRoot();
   return fs
     .readdirSync(templatesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_'))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_') && !HIDDEN_TEMPLATES.has(entry.name))
     .map((entry) => entry.name);
 }
 
@@ -365,7 +368,15 @@ function generateVoucherId() {
 }
 
 function newVoucherCode() {
-  return `VC-${Date.now()}`;
+  // 6-digit numeric-only serial
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function normalizeNumericCode(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (digits.length >= 6) return digits.slice(0, 6);
+  if (digits.length > 0) return digits.padStart(6, '0');
+  return newVoucherCode();
 }
 
 function filterVouchers(items, searchText) {
@@ -397,12 +408,13 @@ async function saveVoucherFile(voucher) {
   const now = new Date().toISOString();
   const id = voucher.id || generateVoucherId();
   const existingIndex = (state.items || []).findIndex((item) => item.id === id);
+  const code = normalizeNumericCode(voucher.data?.VoucherCode || voucher.data?.Code);
   const base = {
     id,
     templateId: voucher.templateId || (state.items?.[0]?.templateId || ''),
     createdAt: voucher.createdAt || now,
     updatedAt: now,
-    data: voucher.data || {},
+    data: { ...(voucher.data || {}), VoucherCode: code, Code: code },
     images: voucher.images || {}
   };
   if (existingIndex >= 0) {
@@ -424,6 +436,19 @@ async function deleteVoucherFile(id) {
   if (fs.existsSync(targetAssets)) {
     await fsp.rm(targetAssets, { recursive: true, force: true });
   }
+  return true;
+}
+
+async function clearAllVouchersFile() {
+  const file = vouchersFilePath();
+  if (fs.existsSync(file)) {
+    await fsp.rm(file, { force: true });
+  }
+  const assetsDir = vouchersAssetsRoot();
+  if (fs.existsSync(assetsDir)) {
+    await fsp.rm(assetsDir, { recursive: true, force: true });
+  }
+  await writeVoucherState({ version: 1, items: [] });
   return true;
 }
 
@@ -453,7 +478,7 @@ async function duplicateVoucherFile(id) {
     id: newId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    data: { ...original.data, VoucherCode: original.data?.VoucherCode ? `${original.data.VoucherCode}-copy` : newCode },
+    data: { ...original.data, VoucherCode: newCode, Code: newCode },
     images: newImages
   };
   await saveVoucherFile(newVoucher);
@@ -514,7 +539,8 @@ async function fileToDataUrl(relPath) {
 }
 
 function generateCode() {
-  return crypto.randomBytes(6).toString('hex');
+  // 6-digit numeric-only code to avoid letters in serial numbers
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function codeExists(dbInstance, code) {
@@ -593,13 +619,92 @@ function ensureSchema(dbInstance) {
   needsCode.forEach((row) => {
     update.run(generateUniqueCode(dbInstance), row.id);
   });
+
+  // Value options table
+  dbInstance
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS ${VALUE_TABLE} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        value TEXT UNIQUE NOT NULL
+      )`
+    )
+    .run();
+}
+
+function clearVoucherDb() {
+  const dbInstance = getDb();
+  if (!dbInstance) return;
+  dbInstance.prepare('DELETE FROM vouchers').run();
+}
+
+function listValueOptions() {
+  const dbInstance = getDb();
+  if (!dbInstance) return [];
+  const rows = dbInstance.prepare(`SELECT value FROM ${VALUE_TABLE} ORDER BY value COLLATE NOCASE`).all();
+  return rows.map((r) => r.value);
+}
+
+function addValueOption(val) {
+  const value = String(val || '').trim();
+  if (!value) return listValueOptions();
+  const dbInstance = getDb();
+  if (!dbInstance) return [];
+  dbInstance.prepare(`INSERT OR IGNORE INTO ${VALUE_TABLE} (value) VALUES (?)`).run(value);
+  return listValueOptions();
+}
+
+function deleteValueOption(val) {
+  const value = String(val || '').trim();
+  if (!value) return listValueOptions();
+  const dbInstance = getDb();
+  if (!dbInstance) return [];
+  dbInstance.prepare(`DELETE FROM ${VALUE_TABLE} WHERE value = ?`).run(value);
+  return listValueOptions();
+}
+
+async function exportVouchersCsv() {
+  const state = readVoucherState();
+  const items = state.items || [];
+  if (!items.length) {
+    return { ok: false, error: 'No vouchers to export' };
+  }
+  const defaultPath = path.join(app.getPath('documents'), `vouchers-${Date.now()}.csv`);
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showSaveDialog(win, {
+    title: 'Export vouchers as CSV',
+    defaultPath,
+    filters: [{ name: 'CSV', extensions: ['csv'] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: false, canceled: true };
+  }
+  const headers = ['id', 'templateId', 'voucherCode', 'createdAt', 'updatedAt', 'redeemedAt', 'data_json'];
+  const lines = [headers.join(',')];
+  items.forEach((item) => {
+    const code = item.data?.VoucherCode || item.data?.Code || '';
+    const line = [
+      `"${item.id || ''}"`,
+      `"${item.templateId || ''}"`,
+      `"${code}"`,
+      `"${item.createdAt || ''}"`,
+      `"${item.updatedAt || ''}"`,
+      `"${item.redeemedAt || ''}"`,
+      `"${JSON.stringify(item.data || {}).replace(/"/g, '""')}"`
+    ];
+    lines.push(line.join(','));
+  });
+  await fsp.writeFile(result.filePath, lines.join(os.EOL), 'utf-8');
+  return { ok: true, path: result.filePath };
 }
 
 function saveVoucher(data, templateId) {
   const dbInstance = getDb();
   if (!dbInstance) throw new Error('Database unavailable (better-sqlite3 not loaded)');
   const now = new Date().toISOString();
-  const codeToUse = normalizeCode(data.code) || generateUniqueCode(dbInstance);
+  let codeToUse = normalizeNumericCode(data.code);
+  if (codeExists(dbInstance, codeToUse)) {
+    codeToUse = generateUniqueCode(dbInstance);
+  }
   const stmt = dbInstance.prepare(
     'INSERT INTO vouchers (name, value, expires, note, templateId, createdAt, code) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
@@ -617,29 +722,91 @@ function saveVoucher(data, templateId) {
 
 function listVouchers(limit = 20) {
   const dbInstance = getDb();
-  if (!dbInstance) return [];
+  const fallbackList = () => {
+    const state = readVoucherState();
+    return (state.items || [])
+      .slice(0, limit)
+      .map((v) => ({
+        id: v.id,
+        name: v.data?.RecipientName || v.data?.Name || '',
+        value: v.data?.Value || '',
+        expires: v.data?.Validity || '',
+        note: v.data?.Note || '',
+        templateId: v.templateId,
+        createdAt: v.createdAt,
+        code: v.data?.VoucherCode || v.data?.Code || '',
+        redeemedAt: v.redeemedAt || null
+      }));
+  };
+
+  if (!dbInstance) {
+    return fallbackList();
+  }
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers ORDER BY createdAt DESC LIMIT ?'
   );
-  return stmt.all(limit);
+  const rows = stmt.all(limit);
+  if (rows.length === 0) return fallbackList();
+  return rows;
 }
 
 function getVoucherById(id) {
+  const fallback = () => {
+    const state = readVoucherState();
+    const found = (state.items || []).find((v) => String(v.id) === String(id));
+    if (!found) return null;
+    return {
+      id: found.id,
+      name: found.data?.RecipientName || found.data?.Name || '',
+      value: found.data?.Value || '',
+      expires: found.data?.Validity || '',
+      note: found.data?.Note || '',
+      templateId: found.templateId,
+      createdAt: found.createdAt,
+      code: found.data?.VoucherCode || found.data?.Code || '',
+      redeemedAt: found.redeemedAt || null
+    };
+  };
+
   const dbInstance = getDb();
-  if (!dbInstance) return null;
+  if (!dbInstance) return fallback();
+
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE id = ?'
   );
-  return stmt.get(id);
+  const row = stmt.get(id);
+  return row || fallback();
 }
 
 function getVoucherByCode(code) {
   const dbInstance = getDb();
-  if (!dbInstance) return null;
+  const fallback = () => {
+    const state = readVoucherState();
+    const needle = normalizeCode(code);
+    const found = (state.items || []).find((v) => normalizeCode(v.data?.VoucherCode || v.data?.Code) === needle);
+    if (!found) return null;
+    return {
+      id: found.id,
+      name: found.data?.RecipientName || found.data?.Name || '',
+      value: found.data?.Value || '',
+      expires: found.data?.Validity || '',
+      note: found.data?.Note || '',
+      templateId: found.templateId,
+      createdAt: found.createdAt,
+      code: found.data?.VoucherCode || found.data?.Code || '',
+      redeemedAt: found.redeemedAt || null
+    };
+  };
+
+  if (!dbInstance) {
+    return fallback();
+  }
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE code = ?'
   );
-  return stmt.get(normalizeCode(code));
+  const row = stmt.get(normalizeCode(code));
+  if (row) return row;
+  return fallback();
 }
 
 function voucherStatus(voucher) {
@@ -928,6 +1095,50 @@ ipcMain.handle('vouchers:clearImage', async (_event, voucherId, imageKey) => {
   }
 });
 
+ipcMain.handle('vouchers:clearAll', async () => {
+  try {
+    await clearAllVouchersFile();
+    clearVoucherDb();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vouchers:exportCsv', async () => {
+  try {
+    return await exportVouchersCsv();
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('values:list', () => {
+  try {
+    return { ok: true, values: listValueOptions() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('values:add', (_event, value) => {
+  try {
+    const values = addValueOption(value);
+    return { ok: true, values };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('values:delete', (_event, value) => {
+  try {
+    const values = deleteValueOption(value);
+    return { ok: true, values };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('export-pdf', async (_event, payload) => exportVoucher('pdf', payload));
 
 ipcMain.handle('export-png', async (_event, payload) => exportVoucher('png', payload));
@@ -980,18 +1191,51 @@ ipcMain.handle('validate-code', (_event, code) => {
 });
 
 ipcMain.handle('redeem-voucher', (_event, id) => {
+  const now = new Date().toISOString();
+
+  const redeemInFile = () => {
+    const state = readVoucherState();
+    const items = state.items || [];
+    const idx = items.findIndex((v) => String(v.id) === String(id));
+    if (idx === -1) return null;
+    items[idx].redeemedAt = now;
+    writeVoucherState(state);
+    const item = items[idx];
+    return {
+      id: item.id,
+      name: item.data?.RecipientName || item.data?.Name || '',
+      value: item.data?.Value || '',
+      expires: item.data?.Validity || '',
+      note: item.data?.Note || '',
+      templateId: item.templateId,
+      createdAt: item.createdAt,
+      code: item.data?.VoucherCode || item.data?.Code || '',
+      redeemedAt: item.redeemedAt || now
+    };
+  };
+
   const dbInstance = getDb();
-  if (!dbInstance) return { ok: false, error: 'Database unavailable (better-sqlite3 missing)' };
+  if (!dbInstance) {
+    const row = redeemInFile();
+    return row ? { ok: true, row } : { ok: false, error: 'Voucher not found' };
+  }
+
   const stmt = dbInstance.prepare('UPDATE vouchers SET redeemedAt = ? WHERE id = ?');
   try {
-    const now = new Date().toISOString();
     const info = stmt.run(now, id);
-    if (info.changes === 0) return { ok: false, error: 'Voucher not found' };
-    const row = getVoucherById(id);
-    return { ok: true, row };
+    if (info.changes > 0) {
+      const row = getVoucherById(id);
+      return { ok: true, row };
+    }
   } catch (err) {
+    const row = redeemInFile();
+    if (row) return { ok: true, row };
     return { ok: false, error: err.message };
   }
+
+  // Not in DB? fall back to file-based vouchers (or any cached rows)
+  const row = redeemInFile() || getVoucherById(id);
+  return row ? { ok: true, row } : { ok: false, error: 'Voucher not found' };
 });
 
 ipcMain.handle('settings:get', async () => {

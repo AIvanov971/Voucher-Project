@@ -39,7 +39,8 @@
       }
     ],
     "win": {
-      "icon": "assets/app-icon.ico"
+      "icon": "assets/app-icon.ico",
+      "signAndEditExecutable": false
     }
   }
 }

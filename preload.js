@@ -39,7 +39,14 @@ contextBridge.exposeInMainWorld('api', {
     delete: (id) => ipcRenderer.invoke('vouchers:delete', id),
     duplicate: (id) => ipcRenderer.invoke('vouchers:duplicate', id),
     pickImage: (voucherId, imageKey) => ipcRenderer.invoke('vouchers:pickImage', voucherId, imageKey),
-    clearImage: (voucherId, imageKey) => ipcRenderer.invoke('vouchers:clearImage', voucherId, imageKey)
+    clearImage: (voucherId, imageKey) => ipcRenderer.invoke('vouchers:clearImage', voucherId, imageKey),
+    clearAll: () => ipcRenderer.invoke('vouchers:clearAll'),
+    exportCsv: () => ipcRenderer.invoke('vouchers:exportCsv')
+  },
+  values: {
+    list: () => ipcRenderer.invoke('values:list'),
+    add: (value) => ipcRenderer.invoke('values:add', value),
+    delete: (value) => ipcRenderer.invoke('values:delete', value)
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

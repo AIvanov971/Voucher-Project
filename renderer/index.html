@@ -57,16 +57,30 @@
             <div class="saved-actions">
               <button id="btnNewVoucher" type="button">New</button>
               <button id="btnDeleteVoucher" type="button" class="danger">Delete</button>
+              <button id="btnClearVouchers" type="button" class="danger">Clear All</button>
+              <button id="btnExportCsv" type="button">Export CSV</button>
             </div>
           </aside>
 
           <section class="panel form-panel">
             <div class="panel-header">
               <h2>Voucher Details</h2>
-              <div class="template-picker-header small">Template</div>
-              <div id="templateCards" class="template-cards compact"></div>
-              <select id="templateSelect" name="template" style="display: none;"></select>
             </div>
+            <div class="template-control-row">
+              <div class="template-picker-header small">Template</div>
+              <div class="template-actions">
+                <button id="btnCreateTemplate" type="button" class="ghost-btn small">New</button>
+                <button id="btnRenameTemplate" type="button" class="ghost-btn small">Rename</button>
+              </div>
+            </div>
+            <div class="voucher-actions inline-actions">
+              <button id="btnSaveVoucher" type="button" class="primary">Save</button>
+              <button id="btnSaveCopy" type="button">Save As Copy</button>
+              <button id="exportBtn" type="button">Export PDF</button>
+              <button id="exportPngBtn" type="button">Export PNG</button>
+            </div>
+            <div id="templateList" class="template-list"></div>
+            <select id="templateSelect" name="template" style="display: none;"></select>
             <span id="statusMsg" class="status"></span>
             <form id="voucherForm" autocomplete="off">
               <div class="form-section">
@@ -104,12 +118,12 @@
             <div class="preview-header">
               <h2>Live Preview</h2>
             </div>
-            <div class="preview-wrapper sticky">
-              <iframe id="previewFrame" title="Voucher Preview"></iframe>
-            </div>
             <div class="export-actions">
               <button id="exportBtn" type="button" class="primary">Export PDF</button>
               <button id="exportPngBtn" type="button">Export PNG</button>
+            </div>
+            <div class="preview-wrapper sticky">
+              <iframe id="previewFrame" title="Voucher Preview"></iframe>
             </div>
           </section>
         </div>
@@ -152,8 +166,15 @@
           <p>Manage templates and layouts.</p>
         </div>
       </header>
+      <div class="builder-toolbar">
+        <div class="builder-toggles">
+          <button id="toggleTools" type="button" class="chip">Tools</button>
+          <button id="toggleProps" type="button" class="chip">Properties</button>
+        </div>
+        <div id="builderScaleIndicator" class="scale-indicator" aria-label="Canvas scale"></div>
+      </div>
       <div class="builder-grid">
-        <div class="builder-col">
+        <div id="builderToolsCol" class="builder-col tools">
           <label>
             <span>Templates</span>
             <select id="tplSelect"></select>
@@ -182,12 +203,12 @@
           <div id="builderStatus" class="status"></div>
           <div id="fieldsList" class="fields-list"></div>
         </div>
-        <div class="builder-col">
+        <div class="builder-col canvas-col">
           <div id="canvas" class="canvas">
             <div id="canvasInner"></div>
           </div>
         </div>
-        <div class="builder-col">
+        <div id="builderPropsCol" class="builder-col props">
           <div class="panel">
             <h3>Field Properties</h3>
             <div id="props">
@@ -211,12 +232,21 @@
                   <option value="Montserrat, Arial, sans-serif">Montserrat, Arial, sans-serif</option>
                   <option value="Roboto, Arial, sans-serif">Roboto, Arial, sans-serif</option>
                   <option value="Times New Roman, serif">Times New Roman, serif</option>
+                  <option value="Poppins, Arial, sans-serif">Poppins, Arial, sans-serif</option>
+                  <option value="Open Sans, Arial, sans-serif">Open Sans, Arial, sans-serif</option>
+                  <option value="Lato, Arial, sans-serif">Lato, Arial, sans-serif</option>
                 </select>
               </label>
               <label>Font Size <input id="propFont" type="number" /></label>
               <label>Weight <input id="propWeight" type="text" placeholder="400/700" /></label>
               <label>Color <input id="propColor" type="color" /></label>
-              <label>Align <input id="propAlign" type="text" placeholder="left/center/right" /></label>
+              <label>Align
+                <select id="propAlign">
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                </select>
+              </label>
               <button id="btnDeleteField" type="button">Delete Field</button>
             </div>
             <div class="quick-tools">
@@ -256,6 +286,26 @@
           <input id="helpSearch" type="text" placeholder="Search help..." />
         </div>
         <div id="helpBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="valueModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="valueModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:420px;">
+        <div class="modal-header">
+          <h3>Добави стойност</h3>
+          <button id="valueModalCancel" class="ghost-btn" aria-label="Close value modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <label>
+            <span>Стойност</span>
+            <input id="valueModalInput" type="text" placeholder="Въведи стойност" />
+          </label>
+        </div>
+        <div class="modal-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+          <button id="valueModalSave" type="button" class="primary">Save</button>
+          <button id="valueModalCancel2" type="button">Cancel</button>
+        </div>
       </div>
     </div>
   </body>

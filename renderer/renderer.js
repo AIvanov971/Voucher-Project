@@ -1,16 +1,33 @@
 
 // renderer/renderer.js
 const previewFrame = document.getElementById('previewFrame');
-const templateCards = document.getElementById('templateCards');
+const templateCards = document.getElementById('templateCards'); // legacy ref
+const templateList = document.getElementById('templateList');
 const templateSelect = document.getElementById('templateSelect');
+const btnCreateTemplate = document.getElementById('btnCreateTemplate');
+const btnRenameTemplate = document.getElementById('btnRenameTemplate');
 const statusMsg = document.getElementById('statusMsg');
 const bannerStack = document.getElementById('bannerStack');
 const savedList = document.getElementById('savedList');
 const savedSearch = document.getElementById('savedSearch');
 const btnNewVoucher = document.getElementById('btnNewVoucher');
 const btnDeleteVoucher = document.getElementById('btnDeleteVoucher');
+const btnClearVouchers = document.getElementById('btnClearVouchers');
+const btnExportCsv = document.getElementById('btnExportCsv');
+const valueModal = document.getElementById('valueModal');
+const valueModalBackdrop = document.getElementById('valueModalBackdrop');
+const valueModalInput = document.getElementById('valueModalInput');
+const valueModalSave = document.getElementById('valueModalSave');
+const valueModalCancel = document.getElementById('valueModalCancel');
+const valueModalCancel2 = document.getElementById('valueModalCancel2');
+const VALUE_FIELD_KEYS = ['Value', 'Стойност', 'стойност'];
 const btnSaveVoucher = document.getElementById('btnSaveVoucher');
 const btnSaveCopy = document.getElementById('btnSaveCopy');
+const toggleTools = document.getElementById('toggleTools');
+const toggleProps = document.getElementById('toggleProps');
+const builderToolsCol = document.getElementById('builderToolsCol');
+const builderPropsCol = document.getElementById('builderPropsCol');
+const builderScaleIndicator = document.getElementById('builderScaleIndicator');
 const exportBtn = document.getElementById('exportBtn');
 const exportPngBtn = document.getElementById('exportPngBtn');
 const voucherForm = document.getElementById('voucherForm');
@@ -82,7 +99,10 @@ const FONT_OPTIONS = [
   'Impact, Arial Black, sans-serif',
   'Montserrat, Arial, sans-serif',
   'Roboto, Arial, sans-serif',
-  'Times New Roman, serif'
+  'Times New Roman, serif',
+  'Poppins, Arial, sans-serif',
+  'Open Sans, Arial, sans-serif',
+  'Lato, Arial, sans-serif'
 ];
 
 const state = {
@@ -111,11 +131,48 @@ const state = {
     selectedField: null,
     cacheBust: 0
   },
+  builderScale: 1,
   theme: 'dark',
   helpContent: '',
   testMode: false,
-  version: ''
+  version: '',
+  valueOptions: []
 };
+
+function generateSerial() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function sanitizeSerial(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length >= 6) return digits.slice(0, 6);
+  if (digits.length > 0) return digits.padStart(6, '0');
+  return generateSerial();
+}
+
+function builderPageSize() {
+  const page = state.builder.meta?.page || { widthPx: 794, heightPx: 1123 };
+  return { width: page.widthPx || 794, height: page.heightPx || 1123 };
+}
+
+function applyBuilderScale() {
+  if (!canvas || !canvasInner) return;
+  const { width, height } = builderPageSize();
+  const container = canvas.parentElement || canvas;
+  const available = Math.max((container.clientWidth || width) - 24, 240);
+  const scale = Math.min(1, available / width);
+  state.builderScale = scale;
+  canvas.style.width = '100%';
+  canvasInner.style.width = `${width}px`;
+  canvasInner.style.height = `${height}px`;
+  canvasInner.style.transform = `scale(${scale})`;
+  canvasInner.style.transformOrigin = 'top center';
+  const scaledHeight = Math.ceil(height * scale);
+  canvas.style.height = `${scaledHeight + 20}px`;
+  if (builderScaleIndicator) {
+    builderScaleIndicator.textContent = `${Math.round(scale * 100)}%`;
+  }
+}
 
 function escapeHtml(value) {
   return (value || '')
@@ -190,6 +247,65 @@ async function loadTheme() {
   updateBadges();
 }
 
+async function loadValueOptions() {
+  try {
+    const res = await window.api.values.list();
+    state.valueOptions = res?.values || [];
+  } catch {
+    state.valueOptions = [];
+  }
+}
+
+async function addValueOption(newVal) {
+  try {
+    const res = await window.api.values.add(newVal);
+    state.valueOptions = res?.values || state.valueOptions;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function deleteValueOption(val) {
+  try {
+    const res = await window.api.values.delete(val);
+    state.valueOptions = res?.values || state.valueOptions;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function openValueModal() {
+  return new Promise((resolve) => {
+    if (!valueModal || !valueModalInput) return resolve(null);
+    valueModalInput.value = '';
+    valueModal.classList.add('open');
+    valueModal.setAttribute('aria-hidden', 'false');
+    valueModalInput.focus();
+    const cleanup = (result) => {
+      valueModal.classList.remove('open');
+      valueModal.setAttribute('aria-hidden', 'true');
+      resolve(result);
+    };
+    const onSave = () => cleanup(valueModalInput.value.trim());
+    const onCancel = () => cleanup(null);
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onSave();
+      }
+    };
+    valueModalSave?.addEventListener('click', onSave, { once: true });
+    valueModalCancel?.addEventListener('click', onCancel, { once: true });
+    valueModalCancel2?.addEventListener('click', onCancel, { once: true });
+    valueModalBackdrop?.addEventListener('click', onCancel, { once: true });
+    valueModalInput?.addEventListener('keydown', onKey, { once: true });
+  });
+}
+
 async function toggleTheme() {
   const next = state.theme === 'light' ? 'dark' : 'light';
   applyTheme(next);
@@ -216,22 +332,24 @@ function setBuilderStatus(message, isError = false) {
 }
 
 function renderTemplateCards() {
-  templateCards.innerHTML = '';
-  state.templates.forEach((tpl) => {
-    const card = document.createElement('div');
-    card.className = 'template-card' + (tpl.id === state.currentTemplateId ? ' selected' : '');
-    card.dataset.id = tpl.id;
-    const thumb = document.createElement('div');
-    thumb.className = 'template-thumb';
-    thumb.textContent = tpl.name?.slice(0, 12) || tpl.id;
-    const nameEl = document.createElement('div');
-    nameEl.className = 'template-name';
-    nameEl.textContent = tpl.name || tpl.id;
-    card.appendChild(thumb);
-    card.appendChild(nameEl);
-    card.addEventListener('click', () => changeTemplate(tpl.id));
-    templateCards.appendChild(card);
-  });
+  if (templateList) {
+    templateList.innerHTML = '';
+    state.templates.forEach((tpl) => {
+      const item = document.createElement('div');
+      item.className = 'template-card' + (tpl.id === state.currentTemplateId ? ' selected' : '');
+      item.dataset.id = tpl.id;
+      const dot = document.createElement('div');
+      dot.className = 'template-thumb';
+      dot.textContent = (tpl.name || tpl.id || '?').slice(0, 2).toUpperCase();
+      const name = document.createElement('div');
+      name.className = 'template-name';
+      name.textContent = tpl.name || tpl.id;
+      item.appendChild(dot);
+      item.appendChild(name);
+      item.addEventListener('click', () => changeTemplate(tpl.id));
+      templateList.appendChild(item);
+    });
+  }
   if (templateSelect && state.currentTemplateId) templateSelect.value = state.currentTemplateId;
 }
 
@@ -381,6 +499,58 @@ function createInputField(field, value) {
   const span = document.createElement('span');
   span.textContent = field.label || field.key;
   wrapper.appendChild(span);
+  const isValueField =
+    VALUE_FIELD_KEYS.includes(field.key) ||
+    (field.label && VALUE_FIELD_KEYS.includes(field.label.trim()));
+  if (isValueField) {
+    const row = document.createElement('div');
+    row.className = 'value-select-row';
+    const select = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '';
+    select.appendChild(blank);
+    (state.valueOptions || []).forEach((opt) => {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = opt;
+      select.appendChild(o);
+    });
+    select.name = field.key;
+    select.value = value || '';
+    select.addEventListener('change', handleFieldInput);
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.textContent = '+';
+    addBtn.title = 'Добави стойност';
+    addBtn.addEventListener('click', async () => {
+      const newVal = await openValueModal();
+      if (!newVal) return;
+      await addValueOption(newVal);
+      select.value = newVal;
+      updateVoucherData(field.key, newVal);
+      renderPreview();
+      renderDynamicForm();
+    });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '−';
+    delBtn.title = 'Изтрий избраната стойност';
+    delBtn.addEventListener('click', async () => {
+      const val = select.value;
+      if (!val) return;
+      await deleteValueOption(val);
+      select.value = '';
+      updateVoucherData(field.key, '');
+      renderPreview();
+      renderDynamicForm();
+    });
+    row.appendChild(select);
+    row.appendChild(addBtn);
+    row.appendChild(delBtn);
+    wrapper.appendChild(row);
+    return wrapper;
+  }
   const useTextarea = (field.h || 0) > 80 || (field.key || '').toLowerCase().includes('note');
   if (useTextarea) {
     const textarea = document.createElement('textarea');
@@ -460,8 +630,9 @@ async function renderDynamicForm() {
 function updateVoucherData(key, value) {
   const next = { ...(state.currentVoucher.data || {}), [key]: value };
   if (key === 'VoucherCode' || key === 'Code') {
-    next.VoucherCode = value;
-    next.Code = value;
+    const serial = sanitizeSerial(value);
+    next.VoucherCode = serial;
+    next.Code = serial;
   }
   state.currentVoucher.data = next;
 }
@@ -486,17 +657,21 @@ function applyFormValues() {
       input.value = input.type === 'date' ? normalizeDateValue(values[key]) : values[key] || '';
     }
   });
+  applyBuilderScale();
 }
 
 function validateVoucherForm() {
   let ok = true;
   const helper = document.querySelector('[data-helper-for="VoucherCode"]');
   const codeVal = inputVoucherCode?.value?.trim();
-  if (!codeVal) {
+  const sanitized = sanitizeSerial(codeVal);
+  if (!sanitized || sanitized.length !== 6) {
     ok = false;
-    if (helper) helper.textContent = 'Required';
+    if (helper) helper.textContent = 'Enter 6 digits';
     inputVoucherCode?.classList.add('error');
   } else {
+    inputVoucherCode.value = sanitized;
+    updateVoucherData('VoucherCode', sanitized);
     if (helper) helper.textContent = '';
     inputVoucherCode?.classList.remove('error');
   }
@@ -563,7 +738,7 @@ async function loadVoucher(id) {
 
 function newVoucher() {
   const newId = `V-${Date.now()}`;
-  const codeValue = `VC-${Date.now()}`;
+  const codeValue = generateSerial();
   state.currentVoucher = {
     id: newId,
     templateId: state.currentTemplateId || (state.templates[0]?.id || null),
@@ -599,6 +774,9 @@ async function saveCurrentVoucher(asCopy = false) {
     templateId: state.currentTemplateId
   };
   if (!payload.data) payload.data = {};
+  const serial = sanitizeSerial(payload.data.VoucherCode || payload.data.Code);
+  payload.data.VoucherCode = serial;
+  payload.data.Code = serial;
   if (payload.data.VoucherCode && !payload.data.Code) {
     payload.data.Code = payload.data.VoucherCode;
   }
@@ -608,7 +786,7 @@ async function saveCurrentVoucher(asCopy = false) {
   if (asCopy || !payload.id) {
     delete payload.id;
     if (!payload.data) payload.data = {};
-    payload.data.VoucherCode = payload.data.VoucherCode || `VC-${Date.now()}`;
+    payload.data.VoucherCode = payload.data.VoucherCode || generateSerial();
     payload.data.Code = payload.data.VoucherCode;
   }
   const res = await window.api.vouchers.save(payload);
@@ -672,6 +850,24 @@ async function deleteCurrentVoucher() {
     await loadVoucherStatusList();
   } else {
     setStatus(res?.error || 'Delete failed', true);
+  }
+}
+
+async function clearAllVouchers() {
+  const confirmed = window.confirm('Clear all saved vouchers? This removes records and images.');
+  if (!confirmed) return;
+  const res = await window.api.vouchers.clearAll();
+  if (res?.ok) {
+    state.selectedVoucherId = null;
+    state.vouchers = [];
+    state.imageData = {};
+    newVoucher();
+    renderSavedList();
+    renderPreview();
+    setStatus('All vouchers cleared');
+    await loadVoucherStatusList();
+  } else {
+    setStatus(res?.error || 'Clear failed', true);
   }
 }
 
@@ -763,8 +959,9 @@ async function renderPreview() {
   function applyPreviewScale(meta) {
     try {
       const frameWin = previewFrame?.contentWindow;
-      const pageEl = frameWin?.document?.getElementById('page');
-      if (!pageEl) return;
+      const doc = frameWin?.document;
+      const pageEl = doc?.getElementById('page');
+      if (!pageEl || !doc) return;
       const width = meta?.page?.widthPx || 1200;
       const height = meta?.page?.heightPx || 566;
       const containerWidth = previewFrame.parentElement?.clientWidth || previewFrame.clientWidth || width;
@@ -772,10 +969,21 @@ async function renderPreview() {
       const scale = Math.min(available / width, 1);
       previewFrame.style.width = '100%';
       previewFrame.style.maxWidth = '100%';
+      // Use zoom so the layout box also shrinks (avoids clipping/scrollbars)
+      pageEl.style.transform = 'none';
       pageEl.style.transformOrigin = 'top left';
-      pageEl.style.transform = `scale(${scale})`;
-      previewFrame.style.height = `${Math.ceil(height * scale) + 16}px`;
-      pageEl.style.margin = '0 auto';
+      pageEl.style.zoom = String(scale);
+      // Keep the iframe tall enough for the zoomed content
+      const scaledHeight = Math.ceil(height * scale);
+      previewFrame.style.height = `${scaledHeight + 24}px`;
+      // Ensure the inner document doesn't add extra margins/scrollbars
+      doc.documentElement.style.overflow = 'hidden';
+      doc.body.style.margin = '0';
+      doc.body.style.padding = '0';
+      doc.body.style.display = 'flex';
+      doc.body.style.justifyContent = 'center';
+      doc.body.style.alignItems = 'flex-start';
+      doc.body.style.background = 'transparent';
     } catch (err) {
       console.error(err);
     }
@@ -808,6 +1016,7 @@ function switchMainSection(target) {
     navVouchers.classList.remove('active');
     navBuilder.classList.add('active');
     initBuilder();
+    updateBuilderResponsive();
   } else {
     sectionVouchers.style.display = 'block';
     sectionBuilder.style.display = 'none';
@@ -1013,10 +1222,6 @@ function deepClone(obj) {
 function renderBuilderBackground() {
   if (!canvasInner || !state.builder.meta) return;
   const page = state.builder.meta.page || { widthPx: 794, heightPx: 1123 };
-  canvas.style.width = `${page.widthPx || 794}px`;
-  canvas.style.height = `${page.heightPx || 1123}px`;
-  canvasInner.style.width = `${page.widthPx || 794}px`;
-  canvasInner.style.height = `${page.heightPx || 1123}px`;
   const bg = state.builder.meta.backgroundUrl || state.builder.meta.background;
   const fit = state.builder.meta.backgroundFit || 'cover';
   const sep = bg && bg.includes('?') ? '&' : '?';
@@ -1030,6 +1235,7 @@ function renderBuilderBackground() {
   canvasInner.style.backgroundSize = size;
   canvasInner.style.backgroundRepeat = 'no-repeat';
   canvasInner.style.backgroundPosition = 'center';
+  applyBuilderScale();
 }
 
 function highlightBuilderSelection() {
@@ -1056,11 +1262,58 @@ function updatePropsPanel() {
   propFont.value = f?.fontSize ?? '';
   propWeight.value = f?.fontWeight ?? '';
   propColor.value = f?.color || '#111111';
-  propAlign.value = f?.align ?? 'center';
+  propAlign.value = (f?.align || 'center').toLowerCase();
   const textControlsDisabled = !f || f.type !== 'text';
   [propFontFamily, propFont, propWeight, propColor, propAlign].forEach((el) => {
     el.disabled = textControlsDisabled;
   });
+}
+
+function setDrawerState(col, collapsed) {
+  if (!col) return;
+  if (collapsed) {
+    col.classList.add('collapsed');
+    col.classList.remove('drawer-open');
+    col.style.display = 'none';
+  } else {
+    col.classList.remove('collapsed');
+    col.style.display = 'block';
+  }
+  applyBuilderScale();
+}
+
+function toggleDrawer(col, side = 'left') {
+  if (!col) return;
+  if (window.innerWidth <= 900) {
+    const open = !col.classList.contains('drawer-open');
+    document.querySelectorAll('.builder-col').forEach((c) => c.classList.remove('drawer-open'));
+    if (open) {
+      col.classList.add('drawer-open');
+      col.style.display = 'block';
+    } else {
+      col.classList.remove('drawer-open');
+      col.style.display = 'none';
+    }
+  } else {
+    const collapsed = col.classList.toggle('collapsed');
+    col.style.display = collapsed ? 'none' : 'block';
+  }
+  applyBuilderScale();
+}
+
+function updateBuilderResponsive() {
+  if (window.innerWidth <= 900) {
+    builderToolsCol?.classList.add('collapsed');
+    builderPropsCol?.classList.add('collapsed');
+    builderToolsCol && (builderToolsCol.style.display = 'none');
+    builderPropsCol && (builderPropsCol.style.display = 'none');
+  } else {
+    builderToolsCol?.classList.remove('collapsed', 'drawer-open');
+    builderPropsCol?.classList.remove('collapsed', 'drawer-open');
+    builderToolsCol && (builderToolsCol.style.display = 'block');
+    builderPropsCol && (builderPropsCol.style.display = 'block');
+  }
+  applyBuilderScale();
 }
 
 function selectBuilderField(field) {
@@ -1075,15 +1328,17 @@ function clamp(val, min, max) {
 
 function startDragField(field, box, event) {
   const canvasRect = canvasInner.getBoundingClientRect();
+  const scale = state.builderScale || 1;
   const startX = event.clientX;
   const startY = event.clientY;
-  const offsetX = startX - box.getBoundingClientRect().left;
-  const offsetY = startY - box.getBoundingClientRect().top;
+  const boxRect = box.getBoundingClientRect();
+  const offsetX = (startX - boxRect.left) / scale;
+  const offsetY = (startY - boxRect.top) / scale;
   box.setPointerCapture(event.pointerId);
 
   const onMove = (ev) => {
-    const x = clamp(ev.clientX - canvasRect.left - offsetX, 0, canvasRect.width - (field.w || 0));
-    const y = clamp(ev.clientY - canvasRect.top - offsetY, 0, canvasRect.height - (field.h || 0));
+    const x = clamp((ev.clientX - canvasRect.left) / scale - offsetX, 0, canvasRect.width / scale - (field.w || 0));
+    const y = clamp((ev.clientY - canvasRect.top) / scale - offsetY, 0, canvasRect.height / scale - (field.h || 0));
     field.x = Math.round(x);
     field.y = Math.round(y);
     box.style.left = `${field.x}px`;
@@ -1104,6 +1359,7 @@ function startDragField(field, box, event) {
 
 function startResizeField(field, box, event) {
   const canvasRect = canvasInner.getBoundingClientRect();
+  const scale = state.builderScale || 1;
   const startX = event.clientX;
   const startY = event.clientY;
   const startW = field.w || 0;
@@ -1111,10 +1367,10 @@ function startResizeField(field, box, event) {
   box.setPointerCapture(event.pointerId);
 
   const onMove = (ev) => {
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    field.w = clamp(Math.round(startW + dx), 10, canvasRect.width - (field.x || 0));
-    field.h = clamp(Math.round(startH + dy), 10, canvasRect.height - (field.y || 0));
+    const dx = (ev.clientX - startX) / scale;
+    const dy = (ev.clientY - startY) / scale;
+    field.w = clamp(Math.round(startW + dx), 10, canvasRect.width / scale - (field.x || 0));
+    field.h = clamp(Math.round(startH + dy), 10, canvasRect.height / scale - (field.y || 0));
     box.style.width = `${field.w}px`;
     box.style.height = `${field.h}px`;
     updatePropsPanel();
@@ -1207,10 +1463,26 @@ function renderBuilderFields() {
       selectBuilderField(field);
     });
 
+    const alignSelect = document.createElement('select');
+    ['left', 'center', 'right'].forEach((pos) => {
+      const opt = document.createElement('option');
+      opt.value = pos;
+      opt.textContent = pos.toUpperCase();
+      if (pos === (field.align || 'center').toLowerCase()) opt.selected = true;
+      alignSelect.appendChild(opt);
+    });
+    alignSelect.disabled = field.type !== 'text';
+    alignSelect.addEventListener('change', () => {
+      field.align = alignSelect.value;
+      renderBuilderFields();
+      selectBuilderField(field);
+    });
+
     controls.appendChild(labelInput);
     controls.appendChild(typeSelect);
     controls.appendChild(fontSelect);
     controls.appendChild(colorInput);
+    controls.appendChild(alignSelect);
 
     item.appendChild(title);
     item.appendChild(controls);
@@ -1224,6 +1496,9 @@ function renderBuilderFields() {
     box.style.top = `${field.y || 0}px`;
     box.style.width = `${field.w || 120}px`;
     box.style.height = `${field.h || 40}px`;
+    const align = (field.align || 'center').toLowerCase();
+    box.style.textAlign = align;
+    box.style.justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
     box.innerHTML = `
       <div class="field-box-name">${escapeHtml(field.label || field.key || '')}</div>
       <div class="field-box-type">${field.type || 'text'}</div>
@@ -1285,7 +1560,7 @@ function applyPropChanges() {
   f.fontSize = parseFloat(propFont.value) || f.fontSize || 14;
   f.fontWeight = propWeight.value || f.fontWeight || '400';
   f.color = propColor.value || f.color || '#111111';
-  f.align = propAlign.value || f.align || 'center';
+  f.align = (propAlign.value || f.align || 'center').toLowerCase();
 
   renderBuilderFields();
   selectBuilderField(f);
@@ -1517,6 +1792,7 @@ async function initBuilder() {
 
 async function init() {
   await loadTheme();
+  await loadValueOptions();
   fetchHelp();
   try {
     const v = await window.api.app.getVersion();
@@ -1568,8 +1844,45 @@ async function init() {
   });
   btnNewVoucher?.addEventListener('click', newVoucher);
   btnDeleteVoucher?.addEventListener('click', deleteCurrentVoucher);
+  btnClearVouchers?.addEventListener('click', clearAllVouchers);
+  btnExportCsv?.addEventListener('click', async () => {
+    const res = await window.api.vouchers.exportCsv();
+    if (res?.ok) {
+      setStatus(`Exported CSV to ${res.path}`);
+    } else if (!res?.canceled) {
+      setStatus(res?.error || 'Export failed', true);
+    }
+  });
   btnSaveVoucher?.addEventListener('click', () => saveCurrentVoucher(false));
   btnSaveCopy?.addEventListener('click', () => saveCopyCurrent());
+  btnCreateTemplate?.addEventListener('click', async () => {
+    const name = prompt('Template name?');
+    if (!name) return;
+    const meta = { name, id: name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || undefined };
+    const res = await window.api.templates.create(meta);
+    if (res?.id) {
+      await loadTemplates();
+      await changeTemplate(res.id);
+      setStatus('Template created');
+    }
+  });
+  btnRenameTemplate?.addEventListener('click', async () => {
+    const tplId = state.currentTemplateId;
+    if (!tplId) return;
+    const currentName = state.templates.find((t) => t.id === tplId)?.name || tplId;
+    const newName = prompt('Rename template to:', currentName);
+    if (!newName || newName === currentName) return;
+    const res = await window.api.templates.saveMeta(tplId, { name: newName });
+    if (res?.ok) {
+      await loadTemplates();
+      await changeTemplate(tplId);
+      setStatus('Template renamed');
+    } else {
+      setStatus(res?.error || 'Rename failed', true);
+    }
+  });
+  toggleTools?.addEventListener('click', () => toggleDrawer(builderToolsCol, 'left'));
+  toggleProps?.addEventListener('click', () => toggleDrawer(builderPropsCol, 'right'));
   exportBtn?.addEventListener('click', () => handleExport('pdf'));
   exportPngBtn?.addEventListener('click', () => handleExport('png'));
   inputVoucherCode?.addEventListener('input', (e) => {
@@ -1655,7 +1968,10 @@ async function init() {
     if (state.previewReady) {
       renderPreview();
     }
+    updateBuilderResponsive();
   });
+
+  updateBuilderResponsive();
 }
 
 document.addEventListener('DOMContentLoaded', init);

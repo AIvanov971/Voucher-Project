@@ -176,8 +176,14 @@ async function fileToDataUrl(relPath, baseDir) {
 }
 
 function normalizeVoucherData(data = {}) {
-  const code = (data.VoucherCode || data.code || '').trim();
-  const voucherCode = code || `VC-${Date.now()}`;
+  const rawCode = (data.VoucherCode || data.code || '').trim();
+  const numericOnly = rawCode.replace(/\D/g, '');
+  const sixDigits = (() => {
+    if (numericOnly.length >= 6) return numericOnly.slice(0, 6);
+    if (numericOnly.length > 0) return numericOnly.padStart(6, '0');
+    return String(Math.floor(100000 + Math.random() * 900000));
+  })();
+  const voucherCode = sixDigits;
   const issueDate = data.IssueDate || data.issueDate || new Date().toISOString().slice(0, 10);
   const validity = data.Validity || data.validity || data.expiration || data.expires || '';
   const recipient = data.RecipientName || data.userName || data.UserName || data.name || 'Recipient';
@@ -253,15 +259,31 @@ async function resolveImageDataMap(images, baseDir) {
   return out;
 }
 
+function inlineMetaAssets(templateId, meta, templatesRoot) {
+  const out = { ...meta };
+  const resolveFile = (relPath) => {
+    if (!relPath) return null;
+    const full = path.join(templatesRoot, templateId, relPath);
+    if (!fs.existsSync(full)) return null;
+    const mime = mimeFromExt(full);
+    const b64 = fs.readFileSync(full).toString('base64');
+    return `data:${mime};base64,${b64}`;
+  };
+  out.backgroundUrl = resolveFile(meta.background) || meta.backgroundUrl || '';
+  out.logoUrl = resolveFile(meta.logo) || meta.logoUrl || '';
+  return out;
+}
+
 async function buildRenderPayload(templateId, rawData, imagesMapping, options = {}) {
   const templatesRoot = resolveTemplatesRoot(options.templatesRoot);
   const vouchersRoot = resolveVouchersRoot(options.vouchersRoot);
   const layout = await readTemplateLayout(templateId, { templatesRoot });
   const meta = readTemplateMeta(templateId, { templatesRoot });
+  const metaWithInline = inlineMetaAssets(templateId, meta, templatesRoot);
   const normalized = normalizeVoucherData(rawData || {});
   const withImages = await attachImagesData(normalized, imagesMapping, vouchersRoot);
   const data = await attachQrData(layout, withImages);
-  return { meta, layout, data };
+  return { meta: metaWithInline, layout, data };
 }
 
 async function renderGeneric(templateId, voucherData, targetWindow, providedMeta, providedLayout, options = {}) {
@@ -308,7 +330,29 @@ async function exportVoucher(format, payload, options = {}) {
   try {
     await win.loadFile(baseRenderer);
     await renderGeneric(selectedTemplateId, renderData, win, meta, layout, { templatesRoot });
-    await win.webContents.executeJavaScript('new Promise((resolve) => requestAnimationFrame(() => resolve()));');
+    // wait for all images (including background) to finish loading
+    await win.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        const page = document.getElementById('page');
+        const bg = page?.style?.backgroundImage || '';
+        const match = bg.match(/url\\(["']?(.*?)["']?\\)/);
+        const bgUrl = match ? match[1] : null;
+        const loaders = [];
+        // inline images
+        Array.from(document.images || []).forEach((img) => {
+          if (!img.complete) {
+            loaders.push(new Promise((r) => { img.onload = img.onerror = r; }));
+          }
+        });
+        // background image
+        if (bgUrl) {
+          const im = new Image();
+          loaders.push(new Promise((r) => { im.onload = im.onerror = r; }));
+          im.src = bgUrl;
+        }
+        Promise.all(loaders).then(() => requestAnimationFrame(() => resolve()));
+      });
+    `);
 
     const outputDir = options.outputDir || app.getPath('downloads');
     await fsp.mkdir(outputDir, { recursive: true });
@@ -324,7 +368,12 @@ async function exportVoucher(format, payload, options = {}) {
       return { ok: true, outPath };
     }
 
-    const image = await win.webContents.capturePage();
+    // ensure no scrollbars and exact canvas size for PNG
+    const targetWidth = Math.ceil(meta.page.widthPx || DEFAULT_PAGE.widthPx);
+    const targetHeight = Math.ceil(meta.page.heightPx || DEFAULT_PAGE.heightPx);
+    await win.webContents.insertCSS('html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; } #page { margin: 0 !important; }');
+    win.setContentSize(targetWidth, targetHeight);
+    const image = await win.webContents.capturePage({ x: 0, y: 0, width: targetWidth, height: targetHeight });
     const buffer = image.toPNG();
     const outPath = path.join(outputDir, buildFilename(renderData, selectedTemplateId, 'png'));
     await fsp.writeFile(outPath, buffer);

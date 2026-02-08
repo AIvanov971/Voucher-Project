@@ -4,10 +4,10 @@
       "key": "RecipientName",
       "label": "Име на получателя",
       "type": "text",
-      "x": 293,
-      "y": 592,
-      "w": 264,
-      "h": 51,
+      "x": 120,
+      "y": 595,
+      "w": 557,
+      "h": 47,
       "fontFamily": "Arial, sans-serif",
       "fontSize": 24,
       "fontWeight": "700",
@@ -18,15 +18,15 @@
       "key": "Value",
       "label": "Стойност",
       "type": "text",
-      "x": 291,
-      "y": 518,
-      "w": 256,
+      "x": 118,
+      "y": 519,
+      "w": 558,
       "h": 49,
       "fontFamily": "Arial, sans-serif",
-      "fontSize": 22,
+      "fontSize": 24,
       "fontWeight": "700",
       "color": "#fefbfb",
-      "align": "Center"
+      "align": "center"
     },
     {
       "key": "IssueDate",
@@ -37,10 +37,10 @@
       "w": 222,
       "h": 48,
       "fontFamily": "Arial, sans-serif",
-      "fontSize": 18,
+      "fontSize": 24,
       "fontWeight": "600",
       "color": "#f5f5f5",
-      "align": "Center"
+      "align": "center"
     },
     {
       "key": "Validity",
@@ -51,24 +51,24 @@
       "w": 234,
       "h": 50,
       "fontFamily": "Arial, sans-serif",
-      "fontSize": 18,
+      "fontSize": 24,
       "fontWeight": "600",
       "color": "#f8f7f7",
-      "align": "Center"
+      "align": "center"
     },
     {
       "key": "Code",
       "label": "Код",
       "type": "text",
-      "x": 283,
-      "y": 445,
-      "w": 273,
-      "h": 47,
+      "x": 112,
+      "y": 444,
+      "w": 565,
+      "h": 51,
       "fontFamily": "Arial, sans-serif",
-      "fontSize": 18,
+      "fontSize": 24,
       "fontWeight": "700",
       "color": "#fafbff",
-      "align": "Center"
+      "align": "center"
     },
     {
       "key": "InstagramLink",

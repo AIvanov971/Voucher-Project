@@ -74,7 +74,9 @@
         box.style.fontSize = `${field.fontSize || 16}px`;
         box.style.fontWeight = field.fontWeight || '400';
         box.style.color = field.color || '#111111';
-        box.style.textAlign = field.align || 'center';
+        const align = (field.align || 'center').toLowerCase();
+        box.style.textAlign = align;
+        box.style.justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
 
         if (field.type === 'qr') {
           const img = document.createElement('img');
@@ -96,6 +98,8 @@
         span.className = 'text';
         const content = data[field.key] ?? '';
         span.textContent = content;
+        span.style.textAlign = align;
+        span.style.justifyContent = align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center';
         box.appendChild(span);
         return box;
       }
