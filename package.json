@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "electron": "^29.4.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.7.0"
   },
   "build": {
     "appId": "com.voucher.maker",
