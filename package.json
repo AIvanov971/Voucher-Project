@@ -14,7 +14,7 @@
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
-    "electron": "^29.4.0",
+    "electron": "^35.7.5",
     "electron-builder": "^24.13.3"
   },
   "build": {
