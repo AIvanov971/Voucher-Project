@@ -59,6 +59,7 @@ const versionTag = document.getElementById('versionTag');
 const versionNote = document.getElementById('versionNote');
 const testBadge = document.getElementById('testBadge');
 const syncIndicator = document.getElementById('syncIndicator');
+const btnSyncNow = document.getElementById('btnSyncNow');
 // Validate
 const validateCodeInput = document.getElementById('validateCodeInput');
 const validateBtn = document.getElementById('validateBtn');
@@ -225,6 +226,7 @@ const state = {
   syncPendingCount: 0,
   syncErrorCount: 0,
   syncTimerId: null,
+  syncRunning: false,
   valueOptions: [],
   services: [],
   resources: [],
@@ -516,6 +518,7 @@ function renderSyncIndicator({ pendingCount = 0, errorCount = 0, unavailable = f
 
 async function refreshSyncIndicator() {
   if (!window.api?.sync?.getStatus) return;
+  if (state.syncRunning) return;
   try {
     const res = await window.api.sync.getStatus();
     if (!res?.ok) {
@@ -526,6 +529,80 @@ async function refreshSyncIndicator() {
   } catch (err) {
     console.error(err);
     renderSyncIndicator({ unavailable: true });
+  }
+}
+
+function setSyncRunning(isRunning) {
+  state.syncRunning = isRunning;
+  if (btnSyncNow) {
+    btnSyncNow.disabled = isRunning;
+  }
+  if (!syncIndicator) return;
+  if (isRunning) {
+    syncIndicator.classList.remove('error');
+    syncIndicator.classList.add('pending');
+    syncIndicator.textContent = 'Sync: running...';
+  }
+}
+
+function formatSyncConflict(conflict) {
+  if (!conflict || typeof conflict !== 'object') return 'Booking conflict';
+  const resourceId = conflict.resourceId || conflict?.conflictingBooking?.resourceId;
+  const startAt = conflict.startAt || '';
+  const endAt = conflict.endAt || '';
+  const parts = ['Booking conflict'];
+  if (resourceId) {
+    parts.push(`Resource ${resourceId}`);
+  }
+  if (startAt && endAt) {
+    const startText = new Date(startAt).toLocaleString();
+    const endText = new Date(endAt).toLocaleTimeString();
+    parts.push(`${startText} - ${endText}`);
+  } else if (startAt) {
+    parts.push(new Date(startAt).toLocaleString());
+  }
+  return parts.join(' · ');
+}
+
+async function refreshDataAfterSync() {
+  await loadServices();
+  await loadResources();
+  await loadSavedList();
+  await loadVoucherStatusList();
+  if (sectionSchedule?.style.display !== 'none') {
+    await initScheduleSection();
+  }
+}
+
+async function runSyncNow() {
+  if (!window.api?.sync?.run) return;
+  if (state.syncRunning) return;
+  setSyncRunning(true);
+  try {
+    const res = await window.api.sync.run();
+    if (!res?.ok) {
+      showBanner(res?.error || 'Sync failed', 'error');
+      return;
+    }
+    const data = res.data || {};
+    const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+    const pushedCount = Number(data?.pushed?.acked || 0);
+    const pulledCount = Number(data?.pulled?.count || 0);
+
+    if (conflicts.length) {
+      showBanner(`${conflicts.length} booking conflict(s) detected`, 'error');
+      showBanner(formatSyncConflict(conflicts[0]), 'error');
+    } else if (pushedCount || pulledCount) {
+      showBanner(`Sync complete: ${pushedCount} pushed, ${pulledCount} pulled`, 'success');
+    } else {
+      showBanner('Sync complete', 'success');
+    }
+    await refreshDataAfterSync();
+  } catch (err) {
+    showBanner(err?.message || 'Sync failed', 'error');
+  } finally {
+    setSyncRunning(false);
+    await refreshSyncIndicator();
   }
 }
 
@@ -3612,6 +3689,8 @@ async function init() {
   navSchedule.addEventListener('click', () => switchMainSection('schedule'));
   navBuilder.addEventListener('click', () => switchMainSection('builder'));
   themeToggle?.addEventListener('click', toggleTheme);
+  btnSyncNow?.addEventListener('click', runSyncNow);
+  syncIndicator?.addEventListener('click', runSyncNow);
   helpBtn?.addEventListener('click', openHelp);
   helpClose?.addEventListener('click', closeHelp);
   helpSearch?.addEventListener('input', (e) => {

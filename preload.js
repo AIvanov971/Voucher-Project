@@ -82,7 +82,8 @@ contextBridge.exposeInMainWorld('api', {
   sync: {
     getStatus: () => ipcRenderer.invoke('sync:getStatus'),
     listOutbox: (limit = 200) => ipcRenderer.invoke('sync:listOutbox', limit),
-    clearErrors: () => ipcRenderer.invoke('sync:clearErrors')
+    clearErrors: () => ipcRenderer.invoke('sync:clearErrors'),
+    run: () => ipcRenderer.invoke('sync:run')
   },
   values: {
     list: () => ipcRenderer.invoke('values:list'),

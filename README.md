@@ -287,7 +287,7 @@
 >   Must be multi-tenant ready (orgId).
 >   Output: code + README for running server locally.
 
-## PROMPT 6.2 — Implement push/pull protocol
+## PROMPT 6.2 — Implement push/pull protocol Implemented
 
 **Codex Prompt**
 

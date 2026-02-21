@@ -2638,6 +2638,827 @@ const bookings = {
   }
 };
 
+
+function normalizeSyncBaseUrl(value) {
+  const raw = normalizeText(value, '');
+  if (!raw) return '';
+  const trimmed = raw.replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `http://${trimmed}`;
+}
+
+function extractSyncSettings(settings) {
+  const syncSettings =
+    settings?.sync && typeof settings.sync === 'object' && !Array.isArray(settings.sync) ? settings.sync : {};
+  const baseUrl = normalizeSyncBaseUrl(
+    syncSettings.baseUrl || settings?.syncBaseUrl || settings?.serverBaseUrl || settings?.baseUrl || ''
+  );
+  const email = normalizeText(syncSettings.email || settings?.syncEmail || settings?.email || '', '');
+  const password = normalizeText(syncSettings.password || settings?.syncPassword || settings?.password || '', '');
+  const orgId = normalizeText(syncSettings.orgId || settings?.syncOrgId || settings?.orgId || '', '');
+  return { baseUrl, email, password, orgId };
+}
+
+function buildSyncUrl(baseUrl, pathname, searchParams = null) {
+  const url = new URL(pathname, baseUrl);
+  if (searchParams) {
+    Object.entries(searchParams).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      url.searchParams.set(key, String(value));
+    });
+  }
+  return url.toString();
+}
+
+async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
+  if (typeof fetch !== 'function') {
+    throw new Error('fetch is not available in this runtime');
+  }
+  const options = {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...headers
+    }
+  };
+  if (body !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!response.ok) {
+    const message = data?.error || `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+async function syncLoginRequest(baseUrl, { email, password, orgId }) {
+  const url = buildSyncUrl(baseUrl, '/auth/login');
+  const payload = { email, password };
+  if (orgId) payload.orgId = orgId;
+  const data = await requestJson(url, { method: 'POST', body: payload });
+  if (!data?.token) {
+    throw new Error(data?.error || 'Sync login failed');
+  }
+  return data;
+}
+
+function getSyncStateRow(dbInstance) {
+  if (dbInstance) {
+    const row = ensureSyncStateRowDb(dbInstance, '');
+    return {
+      lastPullToken: normalizeText(row?.lastPullToken, ''),
+      updatedAt: normalizeText(row?.updatedAt, '')
+    };
+  }
+  const state = readReposFallbackState();
+  return {
+    lastPullToken: normalizeText(state?.syncState?.lastPullToken, ''),
+    updatedAt: normalizeText(state?.syncState?.updatedAt, '')
+  };
+}
+
+function updateSyncStateRow(dbInstance, { lastPullToken = '', updatedAt = '' } = {}) {
+  const stamp = normalizeText(updatedAt, new Date().toISOString());
+  const tokenText = normalizeText(lastPullToken, '');
+  if (dbInstance) {
+    ensureSyncStateRowDb(dbInstance, stamp);
+    dbInstance
+      .prepare(
+        `UPDATE sync_state
+         SET lastPullToken = ?, updatedAt = ?
+         WHERE id = ?`
+      )
+      .run(tokenText, stamp, SYNC_STATE_ID);
+    return;
+  }
+
+  const state = readReposFallbackState();
+  state.syncState = {
+    id: SYNC_STATE_ID,
+    lastPullToken: tokenText,
+    updatedAt: stamp
+  };
+  writeReposFallbackState(state);
+}
+
+function listPendingOutboxRows(dbInstance, limit = 200) {
+  const safeLimit = normalizeLimit(limit, 200);
+  if (dbInstance) {
+    const rows = dbInstance
+      .prepare(
+        `SELECT id, entityType, entityId, op, payloadJson, createdAt, sentAt, ackAt, error
+         FROM sync_outbox
+         WHERE ackAt IS NULL
+           AND COALESCE(TRIM(error), '') = ''
+         ORDER BY createdAt ASC
+         LIMIT ?`
+      )
+      .all(safeLimit);
+    return rows.map((row) => ({
+      ...row,
+      payload: parseSyncPayloadJson(row.payloadJson)
+    }));
+  }
+
+  const state = readReposFallbackState();
+  const rows = (Array.isArray(state.syncOutbox) ? state.syncOutbox : [])
+    .filter((row) => !row?.ackAt && String(row?.error || '').trim() === '')
+    .sort((a, b) => String(a?.createdAt || '').localeCompare(String(b?.createdAt || '')))
+    .slice(0, safeLimit);
+  return rows.map((row) => ({
+    ...row,
+    payload: parseSyncPayloadJson(row.payloadJson)
+  }));
+}
+
+function markOutboxSent(dbInstance, ids, sentAt = '') {
+  const stamp = normalizeText(sentAt, new Date().toISOString());
+  const targetIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  if (targetIds.length === 0) return;
+
+  if (dbInstance) {
+    const stmt = dbInstance.prepare('UPDATE sync_outbox SET sentAt = ? WHERE id = ?');
+    const tx = dbInstance.transaction((items) => {
+      items.forEach((id) => {
+        stmt.run(stamp, id);
+      });
+    });
+    tx(targetIds);
+    return;
+  }
+
+  const state = readReposFallbackState();
+  state.syncOutbox = (Array.isArray(state.syncOutbox) ? state.syncOutbox : []).map((row) => {
+    if (!targetIds.includes(row?.id)) return row;
+    return { ...row, sentAt: stamp };
+  });
+  state.syncState = {
+    id: SYNC_STATE_ID,
+    lastPullToken: normalizeText(state?.syncState?.lastPullToken, ''),
+    updatedAt: stamp
+  };
+  writeReposFallbackState(state);
+}
+
+function markOutboxAck(dbInstance, ids, ackAt = '') {
+  const stamp = normalizeText(ackAt, new Date().toISOString());
+  const targetIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  if (targetIds.length === 0) return;
+
+  if (dbInstance) {
+    const stmt = dbInstance.prepare('UPDATE sync_outbox SET ackAt = ?, error = NULL WHERE id = ?');
+    const tx = dbInstance.transaction((items) => {
+      items.forEach((id) => {
+        stmt.run(stamp, id);
+      });
+    });
+    tx(targetIds);
+    return;
+  }
+
+  const state = readReposFallbackState();
+  state.syncOutbox = (Array.isArray(state.syncOutbox) ? state.syncOutbox : []).map((row) => {
+    if (!targetIds.includes(row?.id)) return row;
+    return { ...row, ackAt: stamp, error: null };
+  });
+  state.syncState = {
+    id: SYNC_STATE_ID,
+    lastPullToken: normalizeText(state?.syncState?.lastPullToken, ''),
+    updatedAt: stamp
+  };
+  writeReposFallbackState(state);
+}
+
+function markOutboxErrors(dbInstance, entries, updatedAt = '') {
+  const stamp = normalizeText(updatedAt, new Date().toISOString());
+  const list = Array.isArray(entries) ? entries.filter((entry) => entry && entry.id) : [];
+  if (list.length === 0) return;
+
+  if (dbInstance) {
+    const stmt = dbInstance.prepare('UPDATE sync_outbox SET error = ?, sentAt = ? WHERE id = ?');
+    const tx = dbInstance.transaction((items) => {
+      items.forEach((entry) => {
+        const message = normalizeText(entry.error, 'Sync error');
+        stmt.run(message, stamp, entry.id);
+      });
+    });
+    tx(list);
+    return;
+  }
+
+  const state = readReposFallbackState();
+  state.syncOutbox = (Array.isArray(state.syncOutbox) ? state.syncOutbox : []).map((row) => {
+    const match = list.find((entry) => entry.id === row?.id);
+    if (!match) return row;
+    return { ...row, error: normalizeText(match.error, 'Sync error'), sentAt: stamp };
+  });
+  state.syncState = {
+    id: SYNC_STATE_ID,
+    lastPullToken: normalizeText(state?.syncState?.lastPullToken, ''),
+    updatedAt: stamp
+  };
+  writeReposFallbackState(state);
+}
+
+function stringifyConflict(conflict) {
+  if (!conflict || typeof conflict !== 'object') return 'Booking conflict';
+  try {
+    return JSON.stringify(conflict);
+  } catch {
+    return normalizeText(conflict.message, 'Booking conflict');
+  }
+}
+
+function applyRemoteServiceChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+
+  if (normalizedOp === 'delete') {
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE services SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, name, durationMin, priceCents, currency, isActive, createdAt, updatedAt, deletedAt
+         FROM services
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  const merged = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    durationMin: normalizePositiveInteger(payload?.durationMin, existing?.durationMin ?? 30),
+    priceCents: normalizeInteger(payload?.priceCents, existing?.priceCents ?? 0),
+    currency: normalizeText(payload?.currency, existing?.currency || 'EUR'),
+    isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!merged.name) return false;
+
+  dbInstance
+    .prepare(
+      `INSERT INTO services (id, orgId, name, durationMin, priceCents, currency, isActive, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         name = excluded.name,
+         durationMin = excluded.durationMin,
+         priceCents = excluded.priceCents,
+         currency = excluded.currency,
+         isActive = excluded.isActive,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      merged.id,
+      merged.orgId,
+      merged.name,
+      merged.durationMin,
+      merged.priceCents,
+      merged.currency,
+      merged.isActive,
+      merged.createdAt,
+      merged.updatedAt,
+      merged.deletedAt
+    );
+  return true;
+}
+
+function applyRemoteServiceChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.services) ? state.services : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    items[index] = { ...existing, deletedAt, updatedAt };
+    state.services = items;
+    return true;
+  }
+
+  const record = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    durationMin: normalizePositiveInteger(payload?.durationMin, existing?.durationMin ?? 30),
+    priceCents: normalizeInteger(payload?.priceCents, existing?.priceCents ?? 0),
+    currency: normalizeText(payload?.currency, existing?.currency || 'EUR'),
+    isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!record.name) return false;
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.services = items;
+  return true;
+}
+
+function applyRemoteResourceChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+
+  if (normalizedOp === 'delete') {
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE resources SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, name, type, isActive, createdAt, updatedAt, deletedAt
+         FROM resources
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  const merged = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    type: normalizeText(payload?.type, existing?.type || 'employee'),
+    isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!merged.name) return false;
+
+  dbInstance
+    .prepare(
+      `INSERT INTO resources (id, orgId, name, type, isActive, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         name = excluded.name,
+         type = excluded.type,
+         isActive = excluded.isActive,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      merged.id,
+      merged.orgId,
+      merged.name,
+      merged.type,
+      merged.isActive,
+      merged.createdAt,
+      merged.updatedAt,
+      merged.deletedAt
+    );
+  return true;
+}
+
+function applyRemoteResourceChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.resources) ? state.resources : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    items[index] = { ...existing, deletedAt, updatedAt };
+    state.resources = items;
+    return true;
+  }
+
+  const record = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    type: normalizeText(payload?.type, existing?.type || 'employee'),
+    isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!record.name) return false;
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.resources = items;
+  return true;
+}
+
+function applyRemoteCustomerChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+
+  if (normalizedOp === 'delete') {
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE customers SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, name, phone, email, notes, createdAt, updatedAt, deletedAt
+         FROM customers
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  const merged = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    phone: normalizeOptionalText(payload?.phone, existing?.phone || null),
+    email: normalizeOptionalText(payload?.email, existing?.email || null),
+    notes: normalizeOptionalText(payload?.notes, existing?.notes || null),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!merged.name) return false;
+
+  dbInstance
+    .prepare(
+      `INSERT INTO customers (id, orgId, name, phone, email, notes, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         name = excluded.name,
+         phone = excluded.phone,
+         email = excluded.email,
+         notes = excluded.notes,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      merged.id,
+      merged.orgId,
+      merged.name,
+      merged.phone,
+      merged.email,
+      merged.notes,
+      merged.createdAt,
+      merged.updatedAt,
+      merged.deletedAt
+    );
+  return true;
+}
+
+function applyRemoteCustomerChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.customers) ? state.customers : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    items[index] = { ...existing, deletedAt, updatedAt };
+    state.customers = items;
+    return true;
+  }
+
+  const record = {
+    id,
+    orgId: normalizeOrgId(),
+    name: normalizeText(payload?.name, existing?.name || ''),
+    phone: normalizeOptionalText(payload?.phone, existing?.phone || null),
+    email: normalizeOptionalText(payload?.email, existing?.email || null),
+    notes: normalizeOptionalText(payload?.notes, existing?.notes || null),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+  if (!record.name) return false;
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.customers = items;
+  return true;
+}
+
+function applyRemoteBookingChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, serviceId, resourceId, customerId, startAt, endAt, status, note, source, voucherId, voucherCode, createdAt, updatedAt, deletedAt
+         FROM bookings
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE bookings SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const merged = {
+    id,
+    orgId: normalizeOrgId(),
+    serviceId: normalizeId(payload?.serviceId || existing?.serviceId),
+    resourceId: normalizeId(payload?.resourceId || existing?.resourceId),
+    customerId: normalizeId(payload?.customerId || existing?.customerId),
+    startAt: normalizeIsoDateTime(payload?.startAt ?? existing?.startAt, ''),
+    endAt: normalizeIsoDateTime(payload?.endAt ?? existing?.endAt, ''),
+    status: normalizeBookingStatus(payload?.status, normalizeBookingStatus(existing?.status, 'confirmed')),
+    note: normalizeOptionalText(payload?.note, existing?.note || null),
+    source: normalizeBookingSource(payload?.source, existing?.source || 'sync'),
+    voucherId: normalizeOptionalText(payload?.voucherId, existing?.voucherId || null),
+    voucherCode: normalizeOptionalText(payload?.voucherCode, existing?.voucherCode || null),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+
+  if (!merged.serviceId || !merged.resourceId || !merged.customerId || !merged.startAt || !merged.endAt) {
+    return false;
+  }
+  if (merged.startAt >= merged.endAt) return false;
+
+  dbInstance
+    .prepare(
+      `INSERT INTO bookings (id, orgId, serviceId, resourceId, customerId, startAt, endAt, status, note, source, voucherId, voucherCode, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         serviceId = excluded.serviceId,
+         resourceId = excluded.resourceId,
+         customerId = excluded.customerId,
+         startAt = excluded.startAt,
+         endAt = excluded.endAt,
+         status = excluded.status,
+         note = excluded.note,
+         source = excluded.source,
+         voucherId = excluded.voucherId,
+         voucherCode = excluded.voucherCode,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      merged.id,
+      merged.orgId,
+      merged.serviceId,
+      merged.resourceId,
+      merged.customerId,
+      merged.startAt,
+      merged.endAt,
+      merged.status,
+      merged.note,
+      merged.source,
+      merged.voucherId,
+      merged.voucherCode,
+      merged.createdAt,
+      merged.updatedAt,
+      merged.deletedAt
+    );
+
+  const saved =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, serviceId, resourceId, customerId, startAt, endAt, status, note, source, voucherId, voucherCode, createdAt, updatedAt, deletedAt
+         FROM bookings
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  if (saved) {
+    maybeCreateBookingRedemption(existing, saved);
+  }
+  return true;
+}
+
+function applyRemoteBookingChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.bookings) ? state.bookings : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    items[index] = { ...existing, deletedAt, updatedAt };
+    state.bookings = items;
+    return true;
+  }
+
+  const record = {
+    id,
+    orgId: normalizeOrgId(),
+    serviceId: normalizeId(payload?.serviceId || existing?.serviceId),
+    resourceId: normalizeId(payload?.resourceId || existing?.resourceId),
+    customerId: normalizeId(payload?.customerId || existing?.customerId),
+    startAt: normalizeIsoDateTime(payload?.startAt ?? existing?.startAt, ''),
+    endAt: normalizeIsoDateTime(payload?.endAt ?? existing?.endAt, ''),
+    status: normalizeBookingStatus(payload?.status, normalizeBookingStatus(existing?.status, 'confirmed')),
+    note: normalizeOptionalText(payload?.note, existing?.note || null),
+    source: normalizeBookingSource(payload?.source, existing?.source || 'sync'),
+    voucherId: normalizeOptionalText(payload?.voucherId, existing?.voucherId || null),
+    voucherCode: normalizeOptionalText(payload?.voucherCode, existing?.voucherCode || null),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+
+  if (!record.serviceId || !record.resourceId || !record.customerId || !record.startAt || !record.endAt) {
+    return false;
+  }
+  if (record.startAt >= record.endAt) return false;
+
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.bookings = items;
+  maybeCreateBookingRedemption(existing, record);
+  return true;
+}
+
+async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstance) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const now = new Date().toISOString();
+
+  if (normalizedOp === 'delete') {
+    const state = readVoucherState();
+    const before = Array.isArray(state.items) ? state.items : [];
+    const remaining = before.filter((item) => item.id !== id);
+    if (remaining.length === before.length) return false;
+    state.items = remaining;
+    await writeVoucherState(state);
+    const targetAssets = path.join(vouchersAssetsRoot(), id);
+    if (fs.existsSync(targetAssets)) {
+      await fsp.rm(targetAssets, { recursive: true, force: true });
+    }
+    if (dbInstance) {
+      dbInstance.prepare('DELETE FROM vouchers WHERE id = ?').run(id);
+    }
+    return true;
+  }
+
+  const state = readVoucherState();
+  const items = Array.isArray(state.items) ? state.items : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+  const rawCode = normalizeText(payload?.code, existing?.data?.VoucherCode || existing?.data?.Code || '');
+  const code = rawCode ? normalizeNumericCode(rawCode) : normalizeNumericCode(existing?.data?.VoucherCode || existing?.data?.Code || '');
+  const templateId = normalizeText(payload?.templateId, existing?.templateId || '');
+  const createdAt = normalizeText(payload?.createdAt, existing?.createdAt || now);
+  const updatedAt = normalizeText(payload?.updatedAt, now);
+  const redeemedAt = normalizeDeletedAt(payload?.redeemedAt, existing?.redeemedAt || null);
+
+  const next = {
+    id,
+    templateId,
+    createdAt,
+    updatedAt,
+    redeemedAt,
+    data: { ...(existing?.data || {}), VoucherCode: code, Code: code },
+    images: existing?.images || {}
+  };
+
+  if (index >= 0) {
+    items[index] = next;
+  } else {
+    items.unshift(next);
+  }
+  state.items = items;
+  await writeVoucherState(state);
+
+  if (dbInstance) {
+    const existingDb = dbInstance
+      .prepare('SELECT id FROM vouchers WHERE id = ? LIMIT 1')
+      .get(id);
+    if (existingDb) {
+      dbInstance
+        .prepare('UPDATE vouchers SET code = ?, templateId = ?, redeemedAt = COALESCE(redeemedAt, ?) WHERE id = ?')
+        .run(normalizeCode(code), templateId || null, redeemedAt, id);
+    }
+  }
+  return true;
+}
+
+async function applyRemoteChanges(changes, dbInstance) {
+  let applied = 0;
+  let lastToken = 0;
+  let state = null;
+  let stateDirty = false;
+  if (!dbInstance) {
+    state = readReposFallbackState();
+  }
+
+  for (const change of Array.isArray(changes) ? changes : []) {
+    const tokenValue = Number(change?.token || 0);
+    if (Number.isFinite(tokenValue) && tokenValue > lastToken) {
+      lastToken = tokenValue;
+    }
+    const entityType = normalizeText(change?.entityType, '').toLowerCase();
+    const op = normalizeText(change?.op, '').toLowerCase();
+    if (!entityType || !op) continue;
+    const payload = change?.payload && typeof change.payload === 'object' ? change.payload : {};
+    const entityId = normalizeId(change?.entityId || payload?.id);
+
+    let didApply = false;
+    if (entityType === 'vouchers' || entityType === 'voucher') {
+      didApply = await applyRemoteVoucherChange({ op, payload, entityId }, dbInstance);
+    } else if (dbInstance) {
+      if (entityType === 'services' || entityType === 'service') {
+        didApply = applyRemoteServiceChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'resources' || entityType === 'resource') {
+        didApply = applyRemoteResourceChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'customers' || entityType === 'customer') {
+        didApply = applyRemoteCustomerChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'bookings' || entityType === 'booking') {
+        didApply = applyRemoteBookingChangeDb(dbInstance, op, payload, entityId);
+      }
+    } else if (state) {
+      if (entityType === 'services' || entityType === 'service') {
+        didApply = applyRemoteServiceChangeState(state, op, payload, entityId);
+      } else if (entityType === 'resources' || entityType === 'resource') {
+        didApply = applyRemoteResourceChangeState(state, op, payload, entityId);
+      } else if (entityType === 'customers' || entityType === 'customer') {
+        didApply = applyRemoteCustomerChangeState(state, op, payload, entityId);
+      } else if (entityType === 'bookings' || entityType === 'booking') {
+        didApply = applyRemoteBookingChangeState(state, op, payload, entityId);
+      }
+      if (didApply) stateDirty = true;
+    }
+
+    if (didApply) applied += 1;
+  }
+
+  if (state && stateDirty) {
+    writeReposFallbackState(state);
+  }
+
+  return { appliedCount: applied, lastToken };
+}
+
+let syncRunInProgress = false;
+
 const sync = {
   getStatus() {
     const dbInstance = getDb();
@@ -2737,6 +3558,161 @@ const sync = {
     };
     writeReposFallbackState(state);
     return { cleared };
+  },
+
+  async run() {
+    if (syncRunInProgress) {
+      return { ok: false, error: 'Sync already running' };
+    }
+    syncRunInProgress = true;
+    const startedAt = new Date().toISOString();
+    try {
+      const settings = await readSettings();
+      const config = extractSyncSettings(settings || {});
+      if (!config.baseUrl) {
+        return { ok: false, error: 'syncBaseUrl is required in settings.json' };
+      }
+      if (!config.email || !config.password) {
+        return { ok: false, error: 'syncEmail and syncPassword are required in settings.json' };
+      }
+
+      const auth = await syncLoginRequest(config.baseUrl, {
+        email: config.email,
+        password: config.password,
+        orgId: config.orgId
+      });
+      const token = auth.token;
+
+      const dbInstance = getDb();
+      const syncState = getSyncStateRow(dbInstance);
+      let sinceToken = Number.parseInt(syncState.lastPullToken || '0', 10);
+      if (!Number.isFinite(sinceToken) || sinceToken < 0) sinceToken = 0;
+
+      const pending = listPendingOutboxRows(dbInstance, 200);
+      const pendingIds = pending.map((row) => row.id).filter(Boolean);
+      if (pendingIds.length) {
+        markOutboxSent(dbInstance, pendingIds, startedAt);
+      }
+
+      const summary = {
+        pushed: { total: pendingIds.length, acked: 0, conflicts: 0, errors: 0 },
+        pulled: { count: 0, latestToken: String(sinceToken) },
+        conflicts: []
+      };
+
+      if (pendingIds.length) {
+        const ops = pending.map((row) => ({
+          opId: row.id,
+          entityType: row.entityType,
+          entityId: row.entityId,
+          op: row.op,
+          payload: row.payload || {}
+        }));
+
+        let pushResponse = null;
+        try {
+          pushResponse = await requestJson(buildSyncUrl(config.baseUrl, '/sync/push'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: { ops }
+          });
+        } catch (err) {
+          markOutboxErrors(
+            dbInstance,
+            pendingIds.map((id) => ({ id, error: err.message || 'Sync push failed' })),
+            startedAt
+          );
+          updateSyncStateRow(dbInstance, { lastPullToken: String(sinceToken), updatedAt: startedAt });
+          return { ok: false, error: err.message || 'Sync push failed' };
+        }
+
+        if (!pushResponse?.ok) {
+          const message = pushResponse?.error || 'Sync push failed';
+          markOutboxErrors(
+            dbInstance,
+            pendingIds.map((id) => ({ id, error: message })),
+            startedAt
+          );
+          updateSyncStateRow(dbInstance, { lastPullToken: String(sinceToken), updatedAt: startedAt });
+          return { ok: false, error: message };
+        }
+
+        const ack = Array.isArray(pushResponse.ack) ? pushResponse.ack : [];
+        const conflicts = Array.isArray(pushResponse.conflicts) ? pushResponse.conflicts : [];
+        summary.conflicts = conflicts;
+
+        const ackIds = ack.map((item) => item?.opId).filter(Boolean);
+        if (ackIds.length) {
+          summary.pushed.acked = ackIds.length;
+          markOutboxAck(dbInstance, ackIds, new Date().toISOString());
+        }
+
+        const conflictIds = conflicts.map((item) => item?.opId).filter(Boolean);
+        if (conflictIds.length) {
+          summary.pushed.conflicts = conflictIds.length;
+          markOutboxErrors(
+            dbInstance,
+            conflicts.map((conflict) => ({
+              id: conflict?.opId,
+              error: stringifyConflict(conflict)
+            })),
+            new Date().toISOString()
+          );
+        }
+
+        const pendingSet = new Set(pendingIds);
+        const ackSet = new Set(ackIds);
+        const conflictSet = new Set(conflictIds);
+        const unacked = Array.from(pendingSet).filter((id) => !ackSet.has(id) && !conflictSet.has(id));
+        if (unacked.length) {
+          summary.pushed.errors = unacked.length;
+          markOutboxErrors(
+            dbInstance,
+            unacked.map((id) => ({ id, error: 'Not acknowledged by server' })),
+            new Date().toISOString()
+          );
+        }
+      }
+
+      const pullLimit = 500;
+      let latestToken = sinceToken;
+      let totalApplied = 0;
+      let guard = 0;
+      while (guard < 20) {
+        const pullResponse = await requestJson(
+          buildSyncUrl(config.baseUrl, '/sync/pull', { since: sinceToken, limit: pullLimit }),
+          { method: 'GET', headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!pullResponse?.ok) {
+          throw new Error(pullResponse?.error || 'Sync pull failed');
+        }
+        const changes = Array.isArray(pullResponse.changes) ? pullResponse.changes : [];
+        const { appliedCount, lastToken } = await applyRemoteChanges(changes, dbInstance);
+        totalApplied += appliedCount;
+        if (lastToken > latestToken) {
+          latestToken = lastToken;
+        }
+        if (!changes.length || changes.length < pullLimit) {
+          const serverLatest = Number(pullResponse.latestToken || 0);
+          if (Number.isFinite(serverLatest) && serverLatest > latestToken) {
+            latestToken = serverLatest;
+          }
+          break;
+        }
+        sinceToken = lastToken || sinceToken;
+        guard += 1;
+      }
+
+      updateSyncStateRow(dbInstance, { lastPullToken: String(latestToken), updatedAt: new Date().toISOString() });
+
+      summary.pulled.count = totalApplied;
+      summary.pulled.latestToken = String(latestToken);
+      return { ok: true, data: summary };
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Sync failed' };
+    } finally {
+      syncRunInProgress = false;
+    }
   }
 };
 
@@ -3688,6 +4664,14 @@ ipcMain.handle('sync:clearErrors', async () => {
   try {
     const data = sync.clearErrors();
     return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('sync:run', async () => {
+  try {
+    return await sync.run();
   } catch (err) {
     return { ok: false, error: err.message };
   }
