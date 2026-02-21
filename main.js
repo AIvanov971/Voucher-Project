@@ -1,5 +1,5 @@
 // main.js
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
@@ -9,6 +9,7 @@ const os = require('os');
 const QRCode = require('qrcode');
 const exporter = require('./src/exporter');
 const { computeAvailableSlots } = require('./src/domain/availability');
+const { createVoucherExpiryService } = require('./src/services/voucherExpiryService');
 
 let Database;
 function loadDbLib() {
@@ -103,9 +104,13 @@ const HIDDEN_TEMPLATES = new Set(['classic', 'minimal']);
 const VALUE_TABLE = 'value_options';
 const LOCAL_ORG_ID = 'local';
 const SYNC_STATE_ID = 'local';
+const CSV_IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const csvImportPreviewStore = new Map();
+const VOUCHER_EXPIRY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 let db;
 let dbPath;
+let voucherExpiryCheckTimer = null;
 
 const settingsFilePath = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -500,10 +505,12 @@ function toBookingSyncPayload(booking) {
 
 function toVoucherSyncPayload(voucher) {
   const code = normalizeText(voucher?.data?.VoucherCode || voucher?.data?.Code || voucher?.code, '');
+  const phone = normalizeText(voucher?.phone ?? voucher?.data?.phone, '');
   return {
     id: normalizeId(voucher?.id),
     templateId: normalizeText(voucher?.templateId, ''),
     code,
+    phone,
     updatedAt: normalizeText(voucher?.updatedAt, ''),
     redeemedAt: normalizeDeletedAt(voucher?.redeemedAt, null)
   };
@@ -769,6 +776,13 @@ function normalizeNumericCode(code) {
   return newVoucherCode();
 }
 
+function normalizeNumericCodeOrEmpty(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length >= 6) return digits.slice(0, 6);
+  return digits.padStart(6, '0');
+}
+
 function filterVouchers(items, searchText) {
   if (!searchText) return items;
   const needle = searchText.toLowerCase();
@@ -785,12 +799,26 @@ function filterVouchers(items, searchText) {
 async function listVouchersFile(limit = 30, searchText = '') {
   const state = readVoucherState();
   const filtered = filterVouchers(state.items || [], searchText);
-  return filtered.slice(0, limit);
+  return filtered.slice(0, limit).map((item) => {
+    const phone = normalizeText(item?.phone ?? item?.data?.phone, '');
+    return {
+      ...item,
+      phone,
+      data: { ...(item?.data || {}), phone }
+    };
+  });
 }
 
 async function getVoucherFile(id) {
   const state = readVoucherState();
-  return (state.items || []).find((item) => item.id === id) || null;
+  const item = (state.items || []).find((entry) => entry.id === id) || null;
+  if (!item) return null;
+  const phone = normalizeText(item?.phone ?? item?.data?.phone, '');
+  return {
+    ...item,
+    phone,
+    data: { ...(item?.data || {}), phone }
+  };
 }
 
 async function saveVoucherFile(voucher) {
@@ -798,13 +826,23 @@ async function saveVoucherFile(voucher) {
   const now = new Date().toISOString();
   const id = voucher.id || generateVoucherId();
   const existingIndex = (state.items || []).findIndex((item) => item.id === id);
+  const existingPhone =
+    existingIndex >= 0
+      ? normalizeText(state.items?.[existingIndex]?.phone ?? state.items?.[existingIndex]?.data?.phone, '')
+      : '';
+  const existingRedeemedAt =
+    existingIndex >= 0 ? normalizeDeletedAt(state.items?.[existingIndex]?.redeemedAt, null) : null;
+  const phone = normalizeText(voucher?.phone ?? voucher?.data?.phone, existingPhone);
+  const redeemedAt = normalizeDeletedAt(voucher?.redeemedAt, existingRedeemedAt);
   const code = normalizeNumericCode(voucher.data?.VoucherCode || voucher.data?.Code);
   const base = {
     id,
     templateId: voucher.templateId || (state.items?.[0]?.templateId || ''),
     createdAt: voucher.createdAt || now,
     updatedAt: now,
-    data: { ...(voucher.data || {}), VoucherCode: code, Code: code },
+    redeemedAt,
+    phone,
+    data: { ...(voucher.data || {}), phone, VoucherCode: code, Code: code },
     images: voucher.images || {}
   };
   if (existingIndex >= 0) {
@@ -843,6 +881,154 @@ async function clearAllVouchersFile() {
   }
   await writeVoucherState({ version: 1, items: [] });
   return true;
+}
+
+function listFileVoucherExpiryCandidates() {
+  const state = readVoucherState();
+  const items = Array.isArray(state.items) ? state.items : [];
+  return items
+    .filter((item) => {
+      const redeemedAt = normalizeDeletedAt(item?.redeemedAt, null);
+      if (redeemedAt) return false;
+      const notifiedAt = normalizeDeletedAt(
+        item?.expiryNotificationSentAt ?? item?.data?.expiryNotificationSentAt ?? item?.data?.ExpiryNotificationSentAt,
+        null
+      );
+      if (notifiedAt) return false;
+      const expiryDate = normalizeText(item?.data?.Validity || item?.data?.Expires || item?.expires, '');
+      return Boolean(expiryDate);
+    })
+    .map((item) => ({
+      source: 'file',
+      id: normalizeId(item?.id),
+      code: normalizeText(item?.data?.VoucherCode || item?.data?.Code || item?.code, ''),
+      expiryDate: normalizeText(item?.data?.Validity || item?.data?.Expires || item?.expires, '')
+    }))
+    .filter((item) => item.id && item.expiryDate);
+}
+
+async function markFileVoucherExpiryNotificationSent(voucherId, sentAt) {
+  const id = normalizeId(voucherId);
+  const timestamp = normalizeText(sentAt, '');
+  if (!id || !timestamp) return false;
+
+  const state = readVoucherState();
+  const items = Array.isArray(state.items) ? state.items : [];
+  const index = items.findIndex((item) => normalizeId(item?.id) === id);
+  if (index < 0) return false;
+
+  const current = items[index] || {};
+  const nextData = {
+    ...(current.data || {}),
+    expiryNotificationSentAt: timestamp,
+    ExpiryNotificationSentAt: timestamp
+  };
+  items[index] = {
+    ...current,
+    updatedAt: timestamp,
+    expiryNotificationSentAt: timestamp,
+    data: nextData
+  };
+  state.items = items;
+  await writeVoucherState(state);
+  return true;
+}
+
+function listDbVoucherExpiryCandidates() {
+  const dbInstance = getDb();
+  if (!dbInstance) return [];
+  return dbInstance
+    .prepare(
+      `SELECT id, code, expires, redeemedAt, expiryNotificationSentAt
+         FROM vouchers
+        WHERE (redeemedAt IS NULL OR TRIM(redeemedAt) = '')
+          AND (expiryNotificationSentAt IS NULL OR TRIM(expiryNotificationSentAt) = '')
+          AND expires IS NOT NULL
+          AND TRIM(expires) <> ''`
+    )
+    .all()
+    .map((row) => ({
+      source: 'db',
+      id: normalizeId(row?.id),
+      code: normalizeText(row?.code, ''),
+      expiryDate: normalizeText(row?.expires, '')
+    }))
+    .filter((item) => item.id && item.expiryDate);
+}
+
+function markDbVoucherExpiryNotificationSent(voucherId, sentAt) {
+  const dbInstance = getDb();
+  if (!dbInstance) return false;
+  const id = normalizeId(voucherId);
+  const timestamp = normalizeText(sentAt, '');
+  if (!id || !timestamp) return false;
+
+  const info = dbInstance
+    .prepare(
+      `UPDATE vouchers
+          SET expiryNotificationSentAt = ?
+        WHERE id = ?
+          AND (expiryNotificationSentAt IS NULL OR TRIM(expiryNotificationSentAt) = '')`
+    )
+    .run(timestamp, id);
+  return info.changes > 0;
+}
+
+async function areExpiryNotificationsEnabled() {
+  try {
+    const settings = await readSettings();
+    return settings?.expiryNotificationsEnabled !== false;
+  } catch {
+    return true;
+  }
+}
+
+async function notifyVoucherExpiry({ code, expiryDate }) {
+  const voucherCode = normalizeText(code, 'unknown');
+  const expiryText = normalizeText(expiryDate, 'unknown');
+  const title = 'Voucher expiring soon';
+  const body = `Voucher ${voucherCode} expires in 10 days (${expiryText})`;
+  let shown = false;
+
+  try {
+    const supported = typeof Notification?.isSupported === 'function' ? Notification.isSupported() : Boolean(Notification);
+    if (supported) {
+      const notification = new Notification({ title, body });
+      notification.show();
+      shown = true;
+    }
+  } catch (err) {
+    console.error('Failed to show voucher expiry notification', err);
+  }
+
+  if (!shown) {
+    const options = {
+      type: 'info',
+      title,
+      message: title,
+      detail: body,
+      buttons: ['OK']
+    };
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    if (win) {
+      await dialog.showMessageBox(win, options);
+    } else {
+      await dialog.showMessageBox(options);
+    }
+  }
+}
+
+const voucherExpiryService = createVoucherExpiryService({
+  isEnabled: areExpiryNotificationsEnabled,
+  getFileCandidates: listFileVoucherExpiryCandidates,
+  getDbCandidates: listDbVoucherExpiryCandidates,
+  markFileNotified: markFileVoucherExpiryNotificationSent,
+  markDbNotified: markDbVoucherExpiryNotificationSent,
+  notify: notifyVoucherExpiry
+});
+
+async function checkExpiringVouchers() {
+  return voucherExpiryService.checkExpiringVouchers();
 }
 
 async function duplicateVoucherFile(id) {
@@ -980,6 +1166,8 @@ function ensureSchema(dbInstance) {
       value TEXT NOT NULL,
       expires TEXT,
       note TEXT,
+      phone TEXT,
+      expiryNotificationSentAt TEXT,
       templateId TEXT,
       createdAt TEXT NOT NULL,
       code TEXT UNIQUE,
@@ -998,6 +1186,12 @@ function ensureSchema(dbInstance) {
   }
   if (!columns.has('redeemedAt')) {
     dbInstance.prepare('ALTER TABLE vouchers ADD COLUMN redeemedAt TEXT').run();
+  }
+  if (!columns.has('phone')) {
+    dbInstance.prepare('ALTER TABLE vouchers ADD COLUMN phone TEXT').run();
+  }
+  if (!columns.has('expiryNotificationSentAt')) {
+    dbInstance.prepare('ALTER TABLE vouchers ADD COLUMN expiryNotificationSentAt TEXT').run();
   }
 
   const indexes = dbInstance.prepare('PRAGMA index_list(vouchers)').all();
@@ -3369,6 +3563,7 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
   const createdAt = normalizeText(payload?.createdAt, existing?.createdAt || now);
   const updatedAt = normalizeText(payload?.updatedAt, now);
   const redeemedAt = normalizeDeletedAt(payload?.redeemedAt, existing?.redeemedAt || null);
+  const phone = normalizeText(payload?.phone ?? existing?.phone ?? existing?.data?.phone, '');
 
   const next = {
     id,
@@ -3376,7 +3571,8 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
     createdAt,
     updatedAt,
     redeemedAt,
-    data: { ...(existing?.data || {}), VoucherCode: code, Code: code },
+    phone,
+    data: { ...(existing?.data || {}), phone, VoucherCode: code, Code: code },
     images: existing?.images || {}
   };
 
@@ -3394,8 +3590,8 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
       .get(id);
     if (existingDb) {
       dbInstance
-        .prepare('UPDATE vouchers SET code = ?, templateId = ?, redeemedAt = COALESCE(redeemedAt, ?) WHERE id = ?')
-        .run(normalizeCode(code), templateId || null, redeemedAt, id);
+        .prepare('UPDATE vouchers SET code = ?, templateId = ?, phone = ?, redeemedAt = COALESCE(redeemedAt, ?) WHERE id = ?')
+        .run(normalizeCode(code), templateId || null, phone || null, redeemedAt, id);
     }
   }
   return true;
@@ -3782,22 +3978,550 @@ async function exportVouchersCsv() {
   return { ok: true, path: result.filePath };
 }
 
+const CSV_IMPORT_HEADER_ALIASES = {
+  id: ['id', 'voucherid'],
+  template: ['templateid', 'template', 'design'],
+  code: ['vouchercode', 'code', 'vouchercode', 'voucher_code', 'serial', 'serialnumber'],
+  recipient: ['recipientname', 'name', 'customer', 'client'],
+  value: ['value', 'amount', 'price'],
+  issueDate: ['issuedate', 'issued', 'date'],
+  validity: ['validity', 'expires', 'validuntil', 'expirydate'],
+  note: ['note', 'notes', 'comment'],
+  phone: ['phone', 'phonenumber', 'tel', 'telephone'],
+  redeemedAt: ['redeemedat', 'redeemed', 'usedat'],
+  createdAt: ['createdat', 'created'],
+  updatedAt: ['updatedat', 'updated', 'modifiedat'],
+  dataJson: ['datajson']
+};
+
+const CSV_IMPORT_KNOWN_HEADERS = new Set(
+  Object.values(CSV_IMPORT_HEADER_ALIASES)
+    .flat()
+    .map((name) => normalizeCsvHeaderName(name))
+);
+
+function normalizeCsvHeaderName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function parseCsvRows(csvText) {
+  const text = String(csvText || '').replace(/^\uFEFF/, '');
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  let index = 0;
+
+  while (index < text.length) {
+    const ch = text[index];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[index + 1] === '"') {
+          field += '"';
+          index += 2;
+          continue;
+        }
+        inQuotes = false;
+        index += 1;
+        continue;
+      }
+      field += ch;
+      index += 1;
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      index += 1;
+      continue;
+    }
+    if (ch === ',') {
+      row.push(field);
+      field = '';
+      index += 1;
+      continue;
+    }
+    if (ch === '\r') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      index += 1;
+      if (text[index] === '\n') index += 1;
+      continue;
+    }
+    if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      index += 1;
+      continue;
+    }
+    field += ch;
+    index += 1;
+  }
+
+  row.push(field);
+  const hasAnyRowContent = row.some((value) => String(value || '').trim() !== '');
+  if (hasAnyRowContent || rows.length === 0) {
+    rows.push(row);
+  }
+  return rows;
+}
+
+function pickCsvValue(rowMap, aliases = []) {
+  for (const alias of aliases) {
+    const normalized = normalizeCsvHeaderName(alias);
+    const value = normalizeText(rowMap.get(normalized), '');
+    if (value) return value;
+  }
+  return '';
+}
+
+function parseCsvDataJson(rawValue) {
+  const text = normalizeText(rawValue, '');
+  if (!text) return { data: {}, warning: '' };
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { data: parsed, warning: '' };
+    }
+    return { data: {}, warning: 'data_json is not an object and was ignored' };
+  } catch {
+    return { data: {}, warning: 'data_json is not valid JSON and was ignored' };
+  }
+}
+
+function resolveImportTemplateId(rawTemplateId, templateLookup) {
+  const raw = normalizeText(rawTemplateId, '');
+  if (!raw) return '';
+  if (templateLookup.has(raw)) return templateLookup.get(raw);
+  const lower = raw.toLowerCase();
+  if (templateLookup.has(lower)) return templateLookup.get(lower);
+  const compact = lower.replace(/[\s_]+/g, '');
+  if (templateLookup.has(compact)) return templateLookup.get(compact);
+  return '';
+}
+
+function generateUniqueVoucherIdForImport(usedIds) {
+  for (let i = 0; i < 1000; i += 1) {
+    const id = i === 0 ? generateVoucherId() : `${generateVoucherId()}-${Math.floor(Math.random() * 1000)}`;
+    if (!usedIds.has(id)) return id;
+  }
+  return `${generateVoucherId()}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function chooseUniqueImportCode(rawCode, usedCodes) {
+  const normalized = normalizeNumericCodeOrEmpty(rawCode);
+  if (!normalized) {
+    let generated = normalizeNumericCode('');
+    while (usedCodes.has(generated)) {
+      generated = normalizeNumericCode('');
+    }
+    return { code: generated, missing: true, duplicate: false };
+  }
+  if (usedCodes.has(normalized)) {
+    let generated = normalizeNumericCode('');
+    while (usedCodes.has(generated)) {
+      generated = normalizeNumericCode('');
+    }
+    return { code: generated, missing: false, duplicate: true };
+  }
+  return { code: normalized, missing: false, duplicate: false };
+}
+
+function cleanupCsvImportPreviewStore() {
+  const now = Date.now();
+  for (const [token, entry] of csvImportPreviewStore.entries()) {
+    if (!entry || now - Number(entry.createdAt || 0) > CSV_IMPORT_PREVIEW_TTL_MS) {
+      csvImportPreviewStore.delete(token);
+    }
+  }
+}
+
+function buildVoucherImportPreview(csvText, filePath) {
+  cleanupCsvImportPreviewStore();
+  const parsedRows = parseCsvRows(csvText);
+  if (!parsedRows.length) {
+    throw new Error('CSV file is empty');
+  }
+
+  const headerCells = parsedRows[0] || [];
+  const headers = headerCells.map((value, index) => {
+    const raw = normalizeText(value, '') || `column_${index + 1}`;
+    return { raw, normalized: normalizeCsvHeaderName(raw) };
+  });
+  if (!headers.length) {
+    throw new Error('CSV header row is missing');
+  }
+
+  const templateIds = getTemplateIds();
+  const defaultTemplateId = templateIds[0] || '';
+  const templateSet = new Set(templateIds);
+  const templateLookup = new Map();
+  templateIds.forEach((id) => {
+    const raw = normalizeText(id, '');
+    if (!raw) return;
+    templateLookup.set(raw, raw);
+    templateLookup.set(raw.toLowerCase(), raw);
+    templateLookup.set(raw.toLowerCase().replace(/[\s_]+/g, ''), raw);
+  });
+
+  const state = readVoucherState();
+  const existingItems = Array.isArray(state.items) ? state.items : [];
+  const usedIds = new Set(existingItems.map((item) => normalizeId(item?.id)).filter(Boolean));
+  const usedCodes = new Set(
+    existingItems
+      .map((item) => normalizeNumericCodeOrEmpty(item?.data?.VoucherCode || item?.data?.Code))
+      .filter(Boolean)
+  );
+
+  const allRows = parsedRows.slice(1);
+  if (!allRows.length) {
+    throw new Error('CSV contains no data rows');
+  }
+
+  const validRows = [];
+  const previewRows = [];
+  const invalidSamples = [];
+  let validCount = 0;
+  let invalidCount = 0;
+  let emptyCount = 0;
+  let warningsCount = 0;
+
+  allRows.forEach((rawRow, idx) => {
+    const rowNumber = idx + 2;
+    const rowValues = new Map();
+    let hasContent = false;
+    headers.forEach((header, colIndex) => {
+      const value = normalizeText(rawRow?.[colIndex], '');
+      if (value) hasContent = true;
+      if (!rowValues.has(header.normalized) || !rowValues.get(header.normalized)) {
+        rowValues.set(header.normalized, value);
+      }
+    });
+    if (!hasContent) {
+      emptyCount += 1;
+      return;
+    }
+
+    const warnings = [];
+    const errors = [];
+    const parsedJson = parseCsvDataJson(pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.dataJson));
+    if (parsedJson.warning) warnings.push(parsedJson.warning);
+    const data = { ...(parsedJson.data || {}) };
+
+    headers.forEach((header, colIndex) => {
+      const value = normalizeText(rawRow?.[colIndex], '');
+      if (!value) return;
+      if (CSV_IMPORT_KNOWN_HEADERS.has(header.normalized)) return;
+      if (!Object.prototype.hasOwnProperty.call(data, header.raw)) {
+        data[header.raw] = value;
+      }
+    });
+
+    const rawTemplateId =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.template) ||
+      normalizeText(data.templateId || data.template || data.design, '');
+    const rawId = pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.id) || normalizeText(data.id, '');
+    const rawCode =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.code) ||
+      normalizeText(data.VoucherCode || data.Code || data.voucher_code || data.serial, '');
+    const rawRecipient =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.recipient) ||
+      normalizeText(data.RecipientName || data.Name || data.recipientName, '');
+    const rawValue = pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.value) || normalizeText(data.Value, '');
+    const rawIssueDate =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.issueDate) || normalizeText(data.IssueDate, '');
+    const rawValidity =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.validity) ||
+      normalizeText(data.Validity || data.Expires, '');
+    const rawNote =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.note) || normalizeText(data.Note || data.note, '');
+    const rawPhone =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.phone) ||
+      normalizeText(data.phone || data.Phone, '');
+    const rawRedeemedAt =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.redeemedAt) ||
+      normalizeText(data.RedeemedAt || data.redeemedAt, '');
+    const rawCreatedAt =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.createdAt) || normalizeText(data.createdAt, '');
+    const rawUpdatedAt =
+      pickCsvValue(rowValues, CSV_IMPORT_HEADER_ALIASES.updatedAt) || normalizeText(data.updatedAt, '');
+
+    let templateId = '';
+    if (rawTemplateId) {
+      templateId = resolveImportTemplateId(rawTemplateId, templateLookup);
+      if (!templateId || !templateSet.has(templateId)) {
+        errors.push('Unknown templateId');
+      }
+    } else if (defaultTemplateId) {
+      templateId = defaultTemplateId;
+      warnings.push(`Template missing; defaulted to "${defaultTemplateId}"`);
+    } else {
+      errors.push('Unknown templateId');
+    }
+
+    let id = normalizeId(rawId);
+    if (!id) {
+      id = generateUniqueVoucherIdForImport(usedIds);
+    } else if (usedIds.has(id)) {
+      id = generateUniqueVoucherIdForImport(usedIds);
+      warnings.push('Duplicate id found; generated new id');
+    }
+
+    const codeChoice = chooseUniqueImportCode(rawCode, usedCodes);
+    const code = codeChoice.code;
+    if (codeChoice.missing) warnings.push('Voucher code missing; generated a new code');
+    if (codeChoice.duplicate) warnings.push('Duplicate voucher code found; generated a new code');
+
+    const phone = normalizeText(rawPhone, '');
+    if (rawRecipient) data.RecipientName = rawRecipient;
+    if (rawValue) data.Value = rawValue;
+    if (rawIssueDate) data.IssueDate = rawIssueDate;
+    if (rawValidity) {
+      data.Validity = rawValidity;
+      if (!data.Expires) data.Expires = rawValidity;
+    }
+    if (rawNote) data.Note = rawNote;
+    if (phone) data.phone = phone;
+    data.VoucherCode = code;
+    data.Code = code;
+
+    const redeemedAt = normalizeDeletedAt(rawRedeemedAt, null);
+    if (redeemedAt) data.RedeemedAt = redeemedAt;
+
+    const voucher = {
+      id,
+      templateId: templateId || '',
+      phone,
+      data,
+      images: {}
+    };
+    if (rawCreatedAt) voucher.createdAt = rawCreatedAt;
+    if (rawUpdatedAt) voucher.updatedAt = rawUpdatedAt;
+    if (redeemedAt) voucher.redeemedAt = redeemedAt;
+
+    const previewItem = {
+      rowNumber,
+      id: voucher.id,
+      code,
+      recipientName: normalizeText(voucher.data?.RecipientName, ''),
+      templateId: voucher.templateId,
+      warnings,
+      errors
+    };
+
+    if (errors.length) {
+      invalidCount += 1;
+      if (invalidSamples.length < 20) {
+        invalidSamples.push({ ...previewItem, status: 'invalid' });
+      }
+      if (previewRows.length < 20) {
+        previewRows.push({ ...previewItem, status: 'invalid' });
+      }
+      return;
+    }
+
+    validCount += 1;
+    warningsCount += warnings.length;
+    usedIds.add(voucher.id);
+    usedCodes.add(code);
+    validRows.push({ rowNumber, voucher, warnings });
+    if (previewRows.length < 20) {
+      previewRows.push({ ...previewItem, status: 'valid' });
+    }
+  });
+
+  const token = generateUuid();
+  csvImportPreviewStore.set(token, {
+    createdAt: Date.now(),
+    validRows
+  });
+
+  return {
+    token,
+    filePath,
+    totalRows: allRows.length,
+    validRows: validCount,
+    invalidRows: invalidCount,
+    emptyRows: emptyCount,
+    warningsCount,
+    rows: previewRows,
+    invalidSamples
+  };
+}
+
+function resolveImportRowsFromPayload(payload = {}) {
+  cleanupCsvImportPreviewStore();
+  const token = normalizeText(payload?.token, '');
+  if (token) {
+    const entry = csvImportPreviewStore.get(token);
+    if (!entry) {
+      throw new Error('Import preview expired or invalid');
+    }
+    return { token, rows: Array.isArray(entry.validRows) ? entry.validRows : [] };
+  }
+
+  const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
+  const rows = rowsInput
+    .map((entry, index) => {
+      if (entry && typeof entry === 'object' && entry.voucher && typeof entry.voucher === 'object') {
+        return { rowNumber: normalizeInteger(entry.rowNumber, index + 1), voucher: entry.voucher, warnings: [] };
+      }
+      if (entry && typeof entry === 'object' && entry.data && typeof entry.data === 'object') {
+        return { rowNumber: normalizeInteger(entry.rowNumber, index + 1), voucher: entry, warnings: [] };
+      }
+      return null;
+    })
+    .filter(Boolean);
+  return { token: '', rows };
+}
+
+async function importVouchersCsvPreview() {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Import vouchers from CSV',
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+    properties: ['openFile']
+  });
+  if (result.canceled || !result.filePaths?.length) {
+    return { ok: false, canceled: true };
+  }
+  const filePath = result.filePaths[0];
+  const content = await fsp.readFile(filePath, 'utf-8');
+  const preview = buildVoucherImportPreview(content, filePath);
+  return { ok: true, preview };
+}
+
+async function confirmVouchersCsvImport(payload = {}) {
+  const { token, rows } = resolveImportRowsFromPayload(payload);
+  if (!rows.length) {
+    return { ok: false, error: 'No valid rows to import' };
+  }
+
+  const templateIds = getTemplateIds();
+  const templateSet = new Set(templateIds);
+  const templateLookup = new Map();
+  templateIds.forEach((id) => {
+    const raw = normalizeText(id, '');
+    if (!raw) return;
+    templateLookup.set(raw, raw);
+    templateLookup.set(raw.toLowerCase(), raw);
+    templateLookup.set(raw.toLowerCase().replace(/[\s_]+/g, ''), raw);
+  });
+  const defaultTemplateId = templateIds[0] || '';
+
+  const state = readVoucherState();
+  const existingItems = Array.isArray(state.items) ? state.items : [];
+  const usedIds = new Set(existingItems.map((item) => normalizeId(item?.id)).filter(Boolean));
+  const usedCodes = new Set(
+    existingItems
+      .map((item) => normalizeNumericCodeOrEmpty(item?.data?.VoucherCode || item?.data?.Code))
+      .filter(Boolean)
+  );
+
+  let importedCount = 0;
+  let skippedCount = 0;
+  let warningsCount = 0;
+  const errors = [];
+
+  for (const row of rows) {
+    const rowNumber = normalizeInteger(row?.rowNumber, importedCount + skippedCount + 1);
+    const sourceVoucher = row?.voucher && typeof row.voucher === 'object' ? row.voucher : null;
+    if (!sourceVoucher) {
+      skippedCount += 1;
+      errors.push({ rowNumber, error: 'Invalid row payload' });
+      continue;
+    }
+
+    const data = { ...(sourceVoucher.data || {}) };
+    let templateId = resolveImportTemplateId(sourceVoucher.templateId, templateLookup);
+    if (!templateId && defaultTemplateId) {
+      templateId = defaultTemplateId;
+      warningsCount += 1;
+    }
+    if (!templateId || !templateSet.has(templateId)) {
+      skippedCount += 1;
+      errors.push({ rowNumber, error: 'Unknown templateId' });
+      continue;
+    }
+
+    let id = normalizeId(sourceVoucher.id);
+    if (!id || usedIds.has(id)) {
+      if (id && usedIds.has(id)) warningsCount += 1;
+      id = generateUniqueVoucherIdForImport(usedIds);
+    }
+
+    const codeChoice = chooseUniqueImportCode(data.VoucherCode || data.Code || sourceVoucher.code, usedCodes);
+    if (codeChoice.missing || codeChoice.duplicate) warningsCount += 1;
+    data.VoucherCode = codeChoice.code;
+    data.Code = codeChoice.code;
+
+    const phone = normalizeText(sourceVoucher.phone ?? data.phone ?? data.Phone, '');
+    if (phone) data.phone = phone;
+
+    const voucher = {
+      id,
+      templateId,
+      phone,
+      data,
+      images: sourceVoucher.images && typeof sourceVoucher.images === 'object' ? sourceVoucher.images : {}
+    };
+    if (sourceVoucher.createdAt) voucher.createdAt = sourceVoucher.createdAt;
+    if (sourceVoucher.redeemedAt) voucher.redeemedAt = normalizeDeletedAt(sourceVoucher.redeemedAt, null);
+
+    try {
+      await saveVoucherFile(voucher);
+      importedCount += 1;
+      usedIds.add(voucher.id);
+      usedCodes.add(codeChoice.code);
+    } catch (err) {
+      skippedCount += 1;
+      errors.push({ rowNumber, error: err?.message || 'Failed to import row' });
+    }
+  }
+
+  if (token) {
+    csvImportPreviewStore.delete(token);
+  }
+
+  return {
+    ok: true,
+    summary: {
+      totalValidRows: rows.length,
+      importedCount,
+      skippedCount,
+      warningsCount,
+      errorCount: errors.length,
+      errors: errors.slice(0, 50)
+    }
+  };
+}
+
 function saveVoucher(data, templateId) {
   const dbInstance = getDb();
   if (!dbInstance) throw new Error('Database unavailable (better-sqlite3 not loaded)');
   const now = new Date().toISOString();
+  const phone = normalizeText(data?.phone, '');
   let codeToUse = normalizeNumericCode(data.code);
   if (codeExists(dbInstance, codeToUse)) {
     codeToUse = generateUniqueCode(dbInstance);
   }
   const stmt = dbInstance.prepare(
-    'INSERT INTO vouchers (name, value, expires, note, templateId, createdAt, code) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO vouchers (name, value, expires, note, phone, templateId, createdAt, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const info = stmt.run(
     data.userName,
     data.value,
     data.expiration || null,
     data.note || null,
+    phone || null,
     templateId || null,
     now,
     codeToUse
@@ -3810,6 +4534,7 @@ function saveVoucher(data, templateId) {
       id: String(info.lastInsertRowid),
       templateId: templateId || '',
       code: codeToUse,
+      phone,
       updatedAt: now,
       redeemedAt: null
     },
@@ -3830,6 +4555,7 @@ function listVouchers(limit = 20) {
         value: v.data?.Value || '',
         expires: v.data?.Validity || '',
         note: v.data?.Note || '',
+        phone: v.phone || v.data?.phone || '',
         templateId: v.templateId,
         createdAt: v.createdAt,
         code: v.data?.VoucherCode || v.data?.Code || '',
@@ -3841,7 +4567,7 @@ function listVouchers(limit = 20) {
     return fallbackList();
   }
   const stmt = dbInstance.prepare(
-    'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers ORDER BY createdAt DESC LIMIT ?'
+    'SELECT id, name, value, expires, note, phone, templateId, createdAt, code, redeemedAt FROM vouchers ORDER BY createdAt DESC LIMIT ?'
   );
   const rows = stmt.all(limit);
   if (rows.length === 0) return fallbackList();
@@ -3859,6 +4585,7 @@ function getVoucherById(id) {
       value: found.data?.Value || '',
       expires: found.data?.Validity || '',
       note: found.data?.Note || '',
+      phone: found.phone || found.data?.phone || '',
       templateId: found.templateId,
       createdAt: found.createdAt,
       code: found.data?.VoucherCode || found.data?.Code || '',
@@ -3870,7 +4597,7 @@ function getVoucherById(id) {
   if (!dbInstance) return fallback();
 
   const stmt = dbInstance.prepare(
-    'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE id = ?'
+    'SELECT id, name, value, expires, note, phone, templateId, createdAt, code, redeemedAt FROM vouchers WHERE id = ?'
   );
   const row = stmt.get(id);
   return row || fallback();
@@ -3889,6 +4616,7 @@ function getVoucherByCode(code) {
       value: found.data?.Value || '',
       expires: found.data?.Validity || '',
       note: found.data?.Note || '',
+      phone: found.phone || found.data?.phone || '',
       templateId: found.templateId,
       createdAt: found.createdAt,
       code: found.data?.VoucherCode || found.data?.Code || '',
@@ -3900,7 +4628,7 @@ function getVoucherByCode(code) {
     return fallback();
   }
   const stmt = dbInstance.prepare(
-    'SELECT id, name, value, expires, note, templateId, createdAt, code, redeemedAt FROM vouchers WHERE code = ?'
+    'SELECT id, name, value, expires, note, phone, templateId, createdAt, code, redeemedAt FROM vouchers WHERE code = ?'
   );
   const row = stmt.get(normalizeCode(code));
   if (row) return row;
@@ -4633,6 +5361,31 @@ ipcMain.handle('vouchers:exportCsv', async () => {
   }
 });
 
+ipcMain.handle('vouchers:importCsv', async () => {
+  try {
+    return await importVouchersCsvPreview();
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vouchers:confirmImportCsv', async (_event, payload = {}) => {
+  try {
+    return await confirmVouchersCsvImport(payload || {});
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vouchers:checkExpiryNow', async () => {
+  try {
+    const summary = await checkExpiringVouchers();
+    return { ok: true, summary };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('vouchers:validateCode', async (_event, code) => {
   try {
     const data = validateVoucherCodePayload(code);
@@ -4830,15 +5583,37 @@ ipcMain.handle('app:getVersion', () => {
   }
 });
 
+async function runVoucherExpiryCheckSafely() {
+  try {
+    await checkExpiringVouchers();
+  } catch (err) {
+    console.error('Voucher expiry check failed', err);
+  }
+}
+
 app.whenReady().then(() => {
   getTemplateIds();
   createWindow();
+  runVoucherExpiryCheckSafely();
+  if (voucherExpiryCheckTimer) {
+    clearInterval(voucherExpiryCheckTimer);
+  }
+  voucherExpiryCheckTimer = setInterval(() => {
+    runVoucherExpiryCheckSafely();
+  }, VOUCHER_EXPIRY_CHECK_INTERVAL_MS);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  if (voucherExpiryCheckTimer) {
+    clearInterval(voucherExpiryCheckTimer);
+    voucherExpiryCheckTimer = null;
+  }
 });
 
 app.on('window-all-closed', () => {

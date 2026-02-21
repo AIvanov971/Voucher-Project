@@ -14,12 +14,21 @@ const btnNewVoucher = document.getElementById('btnNewVoucher');
 const btnDeleteVoucher = document.getElementById('btnDeleteVoucher');
 const btnClearVouchers = document.getElementById('btnClearVouchers');
 const btnExportCsv = document.getElementById('btnExportCsv');
+const btnImportCsv = document.getElementById('btnImportCsv');
 const valueModal = document.getElementById('valueModal');
 const valueModalBackdrop = document.getElementById('valueModalBackdrop');
 const valueModalInput = document.getElementById('valueModalInput');
 const valueModalSave = document.getElementById('valueModalSave');
 const valueModalCancel = document.getElementById('valueModalCancel');
 const valueModalCancel2 = document.getElementById('valueModalCancel2');
+const importCsvModal = document.getElementById('importCsvModal');
+const importCsvModalBackdrop = document.getElementById('importCsvModalBackdrop');
+const importCsvClose = document.getElementById('importCsvClose');
+const importCsvCancel = document.getElementById('importCsvCancel');
+const importCsvConfirm = document.getElementById('importCsvConfirm');
+const importCsvStatus = document.getElementById('importCsvStatus');
+const importCsvBody = document.getElementById('importCsvBody');
+const importCsvFilePath = document.getElementById('importCsvFilePath');
 const VALUE_FIELD_KEYS = ['Value', 'Стойност', 'стойност'];
 const btnSaveVoucher = document.getElementById('btnSaveVoucher');
 const btnSaveCopy = document.getElementById('btnSaveCopy');
@@ -34,6 +43,7 @@ const voucherForm = document.getElementById('voucherForm');
 const dynamicFields = document.getElementById('dynamicFields');
 const imageFields = document.getElementById('imageFields');
 const inputVoucherCode = document.getElementById('inputVoucherCode');
+const inputRecipientPhone = document.getElementById('inputRecipientPhone');
 const inputInstagram = document.getElementById('inputInstagram');
 const inputFacebook = document.getElementById('inputFacebook');
 const tabButtons = document.querySelectorAll('[data-view-target]');
@@ -252,7 +262,9 @@ const state = {
   editingBookingOriginalVoucherCode: '',
   bookingVoucherId: '',
   bookingVoucherCode: '',
-  bookingVoucherState: ''
+  bookingVoucherState: '',
+  csvImportPreview: null,
+  csvImportBusy: false
 };
 
 function generateSerial() {
@@ -437,6 +449,184 @@ function setStatus(message, isError = false) {
   statusMsg.textContent = message || '';
   statusMsg.classList.toggle('error', isError);
   if (message) showBanner(message, isError ? 'error' : 'success');
+}
+
+function updateVoucherActionButtonsState() {
+  const hasVoucher = Boolean(state.currentVoucher?.id);
+  const canExport = hasVoucher && Boolean(state.currentTemplateId);
+  if (btnSaveVoucher) btnSaveVoucher.disabled = !hasVoucher;
+  if (btnSaveCopy) btnSaveCopy.disabled = !hasVoucher;
+  if (exportBtn) exportBtn.disabled = !canExport;
+  if (exportPngBtn) exportPngBtn.disabled = !canExport;
+}
+
+function setImportCsvStatus(message, isError = false) {
+  if (!importCsvStatus) return;
+  importCsvStatus.textContent = message || '';
+  importCsvStatus.classList.toggle('error', isError);
+}
+
+function setImportCsvBusy(isBusy) {
+  state.csvImportBusy = Boolean(isBusy);
+  if (btnImportCsv) btnImportCsv.disabled = state.csvImportBusy;
+  if (importCsvConfirm) importCsvConfirm.disabled = state.csvImportBusy || !state.csvImportPreview?.token;
+  if (importCsvCancel) importCsvCancel.disabled = state.csvImportBusy;
+  if (importCsvClose) importCsvClose.disabled = state.csvImportBusy;
+}
+
+function closeImportCsvModal() {
+  if (!importCsvModal || state.csvImportBusy) return;
+  importCsvModal.classList.remove('open');
+  importCsvModal.setAttribute('aria-hidden', 'true');
+}
+
+function openImportCsvModal() {
+  if (!importCsvModal) return;
+  importCsvModal.classList.add('open');
+  importCsvModal.setAttribute('aria-hidden', 'false');
+}
+
+function renderImportCsvPreview() {
+  const preview = state.csvImportPreview;
+  if (!importCsvBody) return;
+  if (!preview) {
+    if (importCsvFilePath) importCsvFilePath.textContent = '';
+    importCsvBody.innerHTML = '<p>No import preview available.</p>';
+    setImportCsvStatus('');
+    setImportCsvBusy(false);
+    return;
+  }
+
+  if (importCsvFilePath) importCsvFilePath.textContent = preview.filePath || '';
+  const rows = Array.isArray(preview.rows) ? preview.rows : [];
+  const invalidRows = Array.isArray(preview.invalidSamples)
+    ? preview.invalidSamples
+    : rows.filter((row) => row.status === 'invalid');
+  const rowHtml = rows
+    .map((row) => {
+      const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+      const errors = Array.isArray(row.errors) ? row.errors : [];
+      return `
+        <tr>
+          <td>${escapeHtml(String(row.rowNumber || ''))}</td>
+          <td>${escapeHtml(row.id || '')}</td>
+          <td class="mono">${escapeHtml(row.code || '')}</td>
+          <td>${escapeHtml(row.recipientName || '')}</td>
+          <td>${escapeHtml(row.templateId || '')}</td>
+          <td>${escapeHtml(row.status || '')}</td>
+          <td>${escapeHtml(errors.join('; ') || warnings.join('; ') || '')}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const invalidDetails = invalidRows.length
+    ? `
+      <h4>Invalid Rows</h4>
+      <ul>
+        ${invalidRows
+          .map(
+            (row) =>
+              `<li>Row ${escapeHtml(String(row.rowNumber || ''))}: ${escapeHtml(
+                (Array.isArray(row.errors) ? row.errors.join('; ') : '') || 'Invalid data'
+              )}</li>`
+          )
+          .join('')}
+      </ul>
+    `
+    : '';
+
+  importCsvBody.innerHTML = `
+    <div class="saved-meta" style="margin-bottom:8px;">
+      Total: ${Number(preview.totalRows || 0)} | Valid: ${Number(preview.validRows || 0)} | Invalid: ${Number(
+    preview.invalidRows || 0
+  )} | Empty: ${Number(preview.emptyRows || 0)} | Warnings: ${Number(preview.warningsCount || 0)}
+    </div>
+    <div class="table-wrap">
+      <table class="saved-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>ID</th>
+            <th>Code</th>
+            <th>Recipient</th>
+            <th>Template</th>
+            <th>Status</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>${rowHtml || '<tr><td colspan="7">No preview rows</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${invalidDetails}
+  `;
+
+  setImportCsvStatus('Review preview and click Import to continue.');
+  setImportCsvBusy(false);
+  if (importCsvConfirm) {
+    const canImport = Boolean(preview.token) && Number(preview.validRows || 0) > 0;
+    importCsvConfirm.disabled = !canImport;
+  }
+}
+
+async function handleImportCsv() {
+  if (state.csvImportBusy) return;
+  setImportCsvBusy(true);
+  setStatus('Preparing CSV import preview...');
+  try {
+    const res = await window.api.vouchers.importCsv();
+    if (res?.canceled) {
+      setStatus('CSV import canceled');
+      setImportCsvBusy(false);
+      return;
+    }
+    if (!res?.ok || !res.preview) {
+      setStatus(res?.error || 'Failed to prepare CSV import', true);
+      setImportCsvBusy(false);
+      return;
+    }
+    state.csvImportPreview = res.preview;
+    renderImportCsvPreview();
+    openImportCsvModal();
+  } catch (err) {
+    setStatus(err?.message || 'Failed to prepare CSV import', true);
+    setImportCsvBusy(false);
+  }
+}
+
+async function confirmImportCsv() {
+  const token = String(state.csvImportPreview?.token || '').trim();
+  if (!token || state.csvImportBusy) return;
+  setImportCsvBusy(true);
+  setImportCsvStatus('Importing...');
+  try {
+    const res = await window.api.vouchers.confirmImportCsv({ token });
+    if (!res?.ok) {
+      setImportCsvStatus(res?.error || 'Import failed', true);
+      setStatus(res?.error || 'Import failed', true);
+      setImportCsvBusy(false);
+      return;
+    }
+    const summary = res.summary || {};
+    const importedCount = Number(summary.importedCount || 0);
+    const skippedCount = Number(summary.skippedCount || 0);
+    const warningsCount = Number(summary.warningsCount || 0);
+    const errorCount = Number(summary.errorCount || 0);
+    const message = `CSV import complete: ${importedCount} imported, ${skippedCount} skipped, ${warningsCount} warnings, ${errorCount} errors`;
+    setStatus(message, errorCount > 0);
+
+    state.csvImportPreview = null;
+    await loadSavedList();
+    renderSavedList();
+    await loadVoucherStatusList();
+    await refreshSyncIndicator();
+    setImportCsvBusy(false);
+    closeImportCsvModal();
+  } catch (err) {
+    setImportCsvStatus(err?.message || 'Import failed', true);
+    setStatus(err?.message || 'Import failed', true);
+    setImportCsvBusy(false);
+  }
 }
 
 function setBuilderStatus(message, isError = false) {
@@ -2224,6 +2414,7 @@ async function changeTemplate(templateId) {
   renderTemplateCards();
   renderDynamicForm();
   renderPreview();
+  updateVoucherActionButtonsState();
 }
 
 async function fetchHelp() {
@@ -2468,6 +2659,9 @@ function updateVoucherData(key, value) {
     next.VoucherCode = serial;
     next.Code = serial;
   }
+  if (key === 'phone') {
+    state.currentVoucher.phone = String(value || '').trim();
+  }
   state.currentVoucher.data = next;
 }
 
@@ -2482,6 +2676,9 @@ function applyFormValues() {
   if (inputVoucherCode) {
     inputVoucherCode.value = state.currentVoucher.data?.VoucherCode || state.currentVoucher.data?.Code || '';
   }
+  if (inputRecipientPhone) {
+    inputRecipientPhone.value = (state.currentVoucher.data?.phone || state.currentVoucher.phone || '').trim();
+  }
   if (inputInstagram) inputInstagram.value = state.currentVoucher.data?.InstagramLink || '';
   if (inputFacebook) inputFacebook.value = state.currentVoucher.data?.FacebookLink || '';
   const values = state.currentVoucher.data || {};
@@ -2491,6 +2688,7 @@ function applyFormValues() {
       input.value = input.type === 'date' ? normalizeDateValue(values[key]) : values[key] || '';
     }
   });
+  updateVoucherActionButtonsState();
   applyBuilderScale();
 }
 
@@ -2535,9 +2733,11 @@ function renderSavedList() {
     item.dataset.id = v.id;
     const title = v.data?.RecipientName || v.data?.Name || v.id;
     const code = v.data?.VoucherCode || v.data?.Code || v.id;
+    const phone = (v.phone || v.data?.phone || '').trim();
     item.innerHTML = `
       <div class="saved-title">${escapeHtml(title)}</div>
       <div class="saved-meta">${escapeHtml(code || '')}</div>
+      ${phone ? `<div class="saved-meta">${escapeHtml(phone)}</div>` : ''}
       <div class="saved-meta">${escapeHtml(v.templateId || '')}</div>
     `;
     item.addEventListener('click', () => loadVoucher(v.id));
@@ -2552,10 +2752,12 @@ async function loadVoucher(id) {
     return;
   }
   state.selectedVoucherId = id;
+  const phone = (res.item?.phone || res.item?.data?.phone || '').trim();
   state.currentVoucher = {
     id: res.item.id,
     templateId: res.item.templateId,
-    data: res.item.data || {},
+    phone,
+    data: { ...(res.item.data || {}), phone },
     images: res.item.images || {}
   };
   state.imageData = res.imagesData || {};
@@ -2576,9 +2778,11 @@ function newVoucher() {
   state.currentVoucher = {
     id: newId,
     templateId: state.currentTemplateId || (state.templates[0]?.id || null),
+    phone: '',
     data: {
       VoucherCode: codeValue,
       Code: codeValue,
+      phone: '',
       IssueDate: new Date().toISOString().slice(0, 10),
       InstagramLink: 'https://www.instagram.com/actiondays.kalofer?igsh=MWxtYWJzMzg4c2Iy',
       FacebookLink: 'https://www.facebook.com/share/1AFAZSUgzW/'
@@ -2608,6 +2812,9 @@ async function saveCurrentVoucher(asCopy = false) {
     templateId: state.currentTemplateId
   };
   if (!payload.data) payload.data = {};
+  const trimmedPhone = String(payload.data.phone ?? payload.phone ?? '').trim();
+  payload.phone = trimmedPhone;
+  payload.data.phone = trimmedPhone;
   const serial = sanitizeSerial(payload.data.VoucherCode || payload.data.Code);
   payload.data.VoucherCode = serial;
   payload.data.Code = serial;
@@ -2625,10 +2832,12 @@ async function saveCurrentVoucher(asCopy = false) {
   }
   const res = await window.api.vouchers.save(payload);
   if (res?.ok) {
+    const phone = String(res.item?.phone ?? res.item?.data?.phone ?? '').trim();
     state.currentVoucher = {
       id: res.item.id,
       templateId: res.item.templateId,
-      data: res.item.data || {},
+      phone,
+      data: { ...(res.item.data || {}), phone },
       images: res.item.images || {}
     };
     state.imageData = res.imagesData || {};
@@ -2650,10 +2859,12 @@ async function saveCopyCurrent() {
   if (state.currentVoucher.id) {
     const res = await window.api.vouchers.duplicate(state.currentVoucher.id);
     if (res?.ok) {
+      const phone = String(res.item?.phone ?? res.item?.data?.phone ?? '').trim();
       state.currentVoucher = {
         id: res.item.id,
         templateId: res.item.templateId,
-        data: res.item.data || {},
+        phone,
+        data: { ...(res.item.data || {}), phone },
         images: res.item.images || {}
       };
       state.imageData = res.imagesData || {};
@@ -2712,10 +2923,12 @@ async function clearAllVouchers() {
 async function handleUploadImage(imageKey) {
   const res = await window.api.vouchers.pickImage(state.currentVoucher.id, imageKey);
   if (res?.ok && res.voucher) {
+    const phone = String(res.voucher?.phone ?? res.voucher?.data?.phone ?? state.currentVoucher.phone ?? '').trim();
     state.currentVoucher = {
       id: res.voucher.id,
       templateId: res.voucher.templateId,
-      data: res.voucher.data || state.currentVoucher.data,
+      phone,
+      data: { ...(res.voucher.data || state.currentVoucher.data || {}), phone },
       images: res.voucher.images || {}
     };
     state.imageData = res.imagesData || state.imageData;
@@ -2828,17 +3041,28 @@ async function renderPreview() {
   }
 
 async function handleExport(format = 'pdf') {
-  if (!state.currentTemplateId) return;
-  const data = { ...(state.currentVoucher.data || {}) };
-  const res =
-    format === 'png'
-      ? await window.voucherAPI.exportPng(data, state.currentTemplateId, state.currentVoucher.images || {})
-      : await window.voucherAPI.exportPdf(data, state.currentTemplateId, state.currentVoucher.images || {});
-  if (res?.ok) {
-    setStatus(`Exported to ${res.outPath || 'Downloads'}`);
-    logTest(`export_${format}`, res.outPath || '');
-  } else {
-    setStatus(res?.error || 'Export failed', true);
+  if (!state.currentVoucher?.id) {
+    setStatus('Select or create a voucher first', true);
+    return;
+  }
+  if (!state.currentTemplateId) {
+    setStatus('Select a template first', true);
+    return;
+  }
+  try {
+    const data = { ...(state.currentVoucher.data || {}) };
+    const res =
+      format === 'png'
+        ? await window.voucherAPI.exportPng(data, state.currentTemplateId, state.currentVoucher.images || {})
+        : await window.voucherAPI.exportPdf(data, state.currentTemplateId, state.currentVoucher.images || {});
+    if (res?.ok) {
+      setStatus(`Exported to ${res.outPath || 'Downloads'}`);
+      logTest(`export_${format}`, res.outPath || '');
+    } else {
+      setStatus(res?.error || 'Export failed', true);
+    }
+  } catch (err) {
+    setStatus(err?.message || 'Export failed', true);
   }
 }
 
@@ -2892,6 +3116,10 @@ function renderValidateDetails(voucher, status) {
     <div class="validate-row">
       <span class="label">Name</span>
       <span>${escapeHtml(voucher.name || '')}</span>
+    </div>
+    <div class="validate-row">
+      <span class="label">Phone</span>
+      <span>${escapeHtml(voucher.phone || '')}</span>
     </div>
     <div class="validate-row">
       <span class="label">Value</span>
@@ -3050,6 +3278,7 @@ async function loadVoucherStatusList() {
       if (!seenCodes.has(code)) {
         rows.push({
           name: v.data?.RecipientName || v.data?.Name || '',
+          phone: v.phone || v.data?.phone || '',
           code,
           templateId: v.templateId,
           expires: v.data?.Validity || '',
@@ -3641,6 +3870,7 @@ async function initBuilder() {
 }
 
 async function init() {
+  updateVoucherActionButtonsState();
   await loadTheme();
   await loadValueOptions();
   fetchHelp();
@@ -3717,6 +3947,11 @@ async function init() {
       setStatus(res?.error || 'Export failed', true);
     }
   });
+  btnImportCsv?.addEventListener('click', handleImportCsv);
+  importCsvConfirm?.addEventListener('click', confirmImportCsv);
+  importCsvCancel?.addEventListener('click', closeImportCsvModal);
+  importCsvClose?.addEventListener('click', closeImportCsvModal);
+  importCsvModalBackdrop?.addEventListener('click', closeImportCsvModal);
   btnSaveVoucher?.addEventListener('click', () => saveCurrentVoucher(false));
   btnSaveCopy?.addEventListener('click', () => saveCopyCurrent());
   btnCreateTemplate?.addEventListener('click', async () => {
@@ -3755,6 +3990,14 @@ async function init() {
     if (helper) helper.textContent = '';
     e.target.classList.remove('error');
     renderPreview();
+  });
+  inputRecipientPhone?.addEventListener('input', (e) => {
+    updateVoucherData('phone', e.target.value);
+  });
+  inputRecipientPhone?.addEventListener('blur', (e) => {
+    const trimmed = String(e.target.value || '').trim();
+    e.target.value = trimmed;
+    updateVoucherData('phone', trimmed);
   });
   inputInstagram?.addEventListener('input', (e) => {
     updateVoucherData('InstagramLink', e.target.value);
@@ -3913,6 +4156,9 @@ async function init() {
     }
     if (e.key === 'Escape' && bookingModal?.classList.contains('open')) {
       closeBookingModal();
+    }
+    if (e.key === 'Escape' && importCsvModal?.classList.contains('open')) {
+      closeImportCsvModal();
     }
   });
 

@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('api', {
     clearImage: (voucherId, imageKey) => ipcRenderer.invoke('vouchers:clearImage', voucherId, imageKey),
     clearAll: () => ipcRenderer.invoke('vouchers:clearAll'),
     exportCsv: () => ipcRenderer.invoke('vouchers:exportCsv'),
+    importCsv: () => ipcRenderer.invoke('vouchers:importCsv'),
+    confirmImportCsv: (payload) => ipcRenderer.invoke('vouchers:confirmImportCsv', payload),
+    checkExpiryNow: () => ipcRenderer.invoke('vouchers:checkExpiryNow'),
     validateCode: (code) => ipcRenderer.invoke('vouchers:validateCode', code)
   },
   services: {

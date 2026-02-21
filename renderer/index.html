@@ -64,6 +64,7 @@
               <button id="btnDeleteVoucher" type="button" class="danger">Delete</button>
               <button id="btnClearVouchers" type="button" class="danger">Clear All</button>
               <button id="btnExportCsv" type="button">Export CSV</button>
+              <button id="btnImportCsv" type="button">Import CSV</button>
             </div>
           </aside>
 
@@ -95,6 +96,10 @@
                   <input type="text" name="VoucherCode" id="inputVoucherCode" required />
                   <small class="helper" data-helper-for="VoucherCode"></small>
                 </label>
+                <label>
+                  <span>Телефон на получателя</span>
+                  <input type="text" name="phone" id="inputRecipientPhone" />
+                </label>
                 <div id="dynamicFields" class="dynamic-fields"></div>
               </div>
               <div class="form-section">
@@ -113,19 +118,11 @@
                 <div id="imageFields" class="image-fields"></div>
               </div>
             </form>
-            <div class="form-actions sticky-actions">
-              <button id="btnSaveVoucher" type="button" class="primary">Save</button>
-              <button id="btnSaveCopy" type="button">Save As Copy</button>
-            </div>
           </section>
 
           <section class="panel preview-panel">
             <div class="preview-header">
               <h2>Live Preview</h2>
-            </div>
-            <div class="export-actions">
-              <button id="exportBtn" type="button" class="primary">Export PDF</button>
-              <button id="exportPngBtn" type="button">Export PNG</button>
             </div>
             <div class="preview-wrapper sticky">
               <iframe id="previewFrame" title="Voucher Preview"></iframe>
@@ -566,6 +563,25 @@
         <div class="modal-actions" style="display:flex; gap:8px; justify-content:flex-end;">
           <button id="valueModalSave" type="button" class="primary">Save</button>
           <button id="valueModalCancel2" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="importCsvModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="importCsvModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:980px;">
+        <div class="modal-header">
+          <div>
+            <h3>Import CSV Preview</h3>
+            <p id="importCsvFilePath" class="saved-meta"></p>
+          </div>
+          <button id="importCsvClose" class="ghost-btn" aria-label="Close CSV import modal">&times;</button>
+        </div>
+        <div id="importCsvStatus" class="status"></div>
+        <div id="importCsvBody" class="modal-body"></div>
+        <div class="modal-actions">
+          <button id="importCsvConfirm" type="button" class="primary">Import</button>
+          <button id="importCsvCancel" type="button">Cancel</button>
         </div>
       </div>
     </div>

@@ -299,7 +299,7 @@
 >   Add conflict detection for bookings overlapping in same resource/time: return conflict object.
 >   Output: server code only.
 
-## PROMPT 6.3 — Desktop sync client
+## PROMPT 6.3 — Desktop sync client Implemented
 
 **Codex Prompt**
 
@@ -310,7 +310,7 @@
 
 ---
 
-# STAGE 7 — Public bookings (B2C)
+# STAGE 7 — Public bookings (B2C)  Implemented
 
 ## PROMPT 7.1 — Public API + slot hold/confirm
 
@@ -343,3 +343,66 @@
 Мога да ти ги дам и като **много къси “micro-prompts”** (по 1 файл/функция), но горните са достатъчно малки, за да се работи итеративно без хаос.
 
 Кажи ми само: искаш ли backend-ът да е **Express** или **Fastify** (и двата са ок). Ако не кажеш — приемам Express за най-малко триене.
+
+
+You are working in an existing Electron app "Voucher Maker".
+
+Goal:
+Add support for storing and displaying the customer's phone number for each voucher.
+
+Requirements:
+- Do NOT remove or break existing voucher functionality.
+- Make additive changes only.
+- Follow existing SQLite + IPC + preload patterns already used for vouchers.
+
+STEP 1 — DATABASE
+
+1. Modify the SQLite vouchers table (in ensureSchema in main.js):
+   - Add a new column:
+     phone TEXT
+
+2. If the column does not exist yet, add safe migration logic:
+   - Use PRAGMA table_info(vouchers)
+   - If column "phone" does not exist, run:
+     ALTER TABLE vouchers ADD COLUMN phone TEXT;
+
+Do NOT recreate the table.
+Do NOT drop data.
+
+STEP 2 — SAVE / LOAD LOGIC
+
+3. Update voucher save logic so that:
+   - When saving voucher data, it accepts and stores "phone"
+   - When retrieving voucher data, "phone" is included in the returned object
+
+Ensure JSON fallback logic (if DB not available) also supports phone.
+
+STEP 3 — IPC
+
+4. Ensure voucher save and get IPC handlers include the "phone" field.
+   - Keep response structure consistent with existing handlers.
+   - Do not change method names.
+
+STEP 4 — UI (Renderer)
+
+5. In the Voucher create/edit form:
+   - Add a new input field:
+     Label: "Телефон на получателя"
+     Name/key: phone
+   - When saving a voucher, include phone in the payload.
+   - When editing a voucher, prefill the phone field.
+
+6. In voucher details view:
+   - Display phone number if present.
+
+STEP 5 — VALIDATION
+
+7. Add minimal validation in renderer:
+   - Phone is optional
+   - If provided, trim whitespace
+   - No strict regex validation required
+
+Output:
+Provide only the modified code sections.
+Do not explain.
+Do not rewrite unrelated parts of the project.

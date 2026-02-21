@@ -28,7 +28,8 @@ function loadConfig() {
     authPassword: process.env.AUTH_PASSWORD || 'change-me',
     jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
-    defaultOrgId: process.env.DEFAULT_ORG_ID || 'local'
+    defaultOrgId: process.env.DEFAULT_ORG_ID || 'local',
+    publicHoldTtlMinutes: parseIntSafe(process.env.PUBLIC_HOLD_TTL_MIN, 10) || 10
   };
 
   if (config.jwtSecret === 'dev-only-change-me') {
