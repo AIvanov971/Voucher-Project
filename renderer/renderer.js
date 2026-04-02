@@ -14,12 +14,21 @@ const btnNewVoucher = document.getElementById('btnNewVoucher');
 const btnDeleteVoucher = document.getElementById('btnDeleteVoucher');
 const btnClearVouchers = document.getElementById('btnClearVouchers');
 const btnExportCsv = document.getElementById('btnExportCsv');
+const btnImportCsv = document.getElementById('btnImportCsv');
 const valueModal = document.getElementById('valueModal');
 const valueModalBackdrop = document.getElementById('valueModalBackdrop');
 const valueModalInput = document.getElementById('valueModalInput');
 const valueModalSave = document.getElementById('valueModalSave');
 const valueModalCancel = document.getElementById('valueModalCancel');
 const valueModalCancel2 = document.getElementById('valueModalCancel2');
+const importCsvModal = document.getElementById('importCsvModal');
+const importCsvModalBackdrop = document.getElementById('importCsvModalBackdrop');
+const importCsvClose = document.getElementById('importCsvClose');
+const importCsvCancel = document.getElementById('importCsvCancel');
+const importCsvConfirm = document.getElementById('importCsvConfirm');
+const importCsvStatus = document.getElementById('importCsvStatus');
+const importCsvBody = document.getElementById('importCsvBody');
+const importCsvFilePath = document.getElementById('importCsvFilePath');
 const VALUE_FIELD_KEYS = ['Value', 'Стойност', 'стойност'];
 const btnSaveVoucher = document.getElementById('btnSaveVoucher');
 const btnSaveCopy = document.getElementById('btnSaveCopy');
@@ -34,13 +43,20 @@ const voucherForm = document.getElementById('voucherForm');
 const dynamicFields = document.getElementById('dynamicFields');
 const imageFields = document.getElementById('imageFields');
 const inputVoucherCode = document.getElementById('inputVoucherCode');
+const inputRecipientPhone = document.getElementById('inputRecipientPhone');
 const inputInstagram = document.getElementById('inputInstagram');
 const inputFacebook = document.getElementById('inputFacebook');
 const tabButtons = document.querySelectorAll('[data-view-target]');
 const views = document.querySelectorAll('[data-view]');
 const navVouchers = document.getElementById('navVouchers');
+const navServices = document.getElementById('navServices');
+const navResources = document.getElementById('navResources');
+const navSchedule = document.getElementById('navSchedule');
 const navBuilder = document.getElementById('navBuilder');
 const sectionVouchers = document.getElementById('view-vouchers');
+const sectionServices = document.getElementById('view-services');
+const sectionResources = document.getElementById('view-resources');
+const sectionSchedule = document.getElementById('view-schedule');
 const sectionBuilder = document.getElementById('view-builder');
 const themeToggle = document.getElementById('themeToggle');
 const helpBtn = document.getElementById('helpBtn');
@@ -52,6 +68,8 @@ const helpVersion = document.getElementById('helpVersion');
 const versionTag = document.getElementById('versionTag');
 const versionNote = document.getElementById('versionNote');
 const testBadge = document.getElementById('testBadge');
+const syncIndicator = document.getElementById('syncIndicator');
+const btnSyncNow = document.getElementById('btnSyncNow');
 // Validate
 const validateCodeInput = document.getElementById('validateCodeInput');
 const validateBtn = document.getElementById('validateBtn');
@@ -60,6 +78,79 @@ const validateRedeemBtn = document.getElementById('validateRedeemBtn');
 const voucherStatusList = document.getElementById('voucherStatusList');
 const voucherStatusFilter = document.getElementById('voucherStatusFilter');
 const refreshVoucherList = document.getElementById('refreshVoucherList');
+
+// Services
+const servicesSearch = document.getElementById('servicesSearch');
+const btnServiceAdd = document.getElementById('btnServiceAdd');
+const servicesStatus = document.getElementById('servicesStatus');
+const servicesTableBody = document.getElementById('servicesTableBody');
+const serviceModal = document.getElementById('serviceModal');
+const serviceModalBackdrop = document.getElementById('serviceModalBackdrop');
+const serviceModalClose = document.getElementById('serviceModalClose');
+const serviceModalCancel = document.getElementById('serviceModalCancel');
+const serviceModalSave = document.getElementById('serviceModalSave');
+const serviceModalTitle = document.getElementById('serviceModalTitle');
+const serviceModalStatus = document.getElementById('serviceModalStatus');
+const serviceNameInput = document.getElementById('serviceNameInput');
+const serviceDurationInput = document.getElementById('serviceDurationInput');
+const servicePriceInput = document.getElementById('servicePriceInput');
+const serviceCurrencyInput = document.getElementById('serviceCurrencyInput');
+const serviceActiveInput = document.getElementById('serviceActiveInput');
+
+// Resources
+const resourcesSearch = document.getElementById('resourcesSearch');
+const btnResourceAdd = document.getElementById('btnResourceAdd');
+const resourcesStatus = document.getElementById('resourcesStatus');
+const resourcesTableBody = document.getElementById('resourcesTableBody');
+const resourceModal = document.getElementById('resourceModal');
+const resourceModalBackdrop = document.getElementById('resourceModalBackdrop');
+const resourceModalClose = document.getElementById('resourceModalClose');
+const resourceModalCancel = document.getElementById('resourceModalCancel');
+const resourceModalSave = document.getElementById('resourceModalSave');
+const resourceModalTitle = document.getElementById('resourceModalTitle');
+const resourceModalStatus = document.getElementById('resourceModalStatus');
+const resourceNameInput = document.getElementById('resourceNameInput');
+const resourceTypeInput = document.getElementById('resourceTypeInput');
+const resourceActiveInput = document.getElementById('resourceActiveInput');
+const resourceServicesList = document.getElementById('resourceServicesList');
+const resourceRulesGrid = document.getElementById('resourceRulesGrid');
+const exceptionDateInput = document.getElementById('exceptionDateInput');
+const exceptionIsOffInput = document.getElementById('exceptionIsOffInput');
+const exceptionStartInput = document.getElementById('exceptionStartInput');
+const exceptionEndInput = document.getElementById('exceptionEndInput');
+const exceptionNoteInput = document.getElementById('exceptionNoteInput');
+const exceptionAddBtn = document.getElementById('exceptionAddBtn');
+const resourceExceptionsList = document.getElementById('resourceExceptionsList');
+
+// Schedule
+const scheduleDateInput = document.getElementById('scheduleDateInput');
+const scheduleServiceSelect = document.getElementById('scheduleServiceSelect');
+const scheduleResourceSelect = document.getElementById('scheduleResourceSelect');
+const scheduleRefreshBtn = document.getElementById('scheduleRefreshBtn');
+const scheduleStatus = document.getElementById('scheduleStatus');
+const scheduleDayTitle = document.getElementById('scheduleDayTitle');
+const scheduleGrid = document.getElementById('scheduleGrid');
+const bookingModal = document.getElementById('bookingModal');
+const bookingModalBackdrop = document.getElementById('bookingModalBackdrop');
+const bookingModalClose = document.getElementById('bookingModalClose');
+const bookingModalCancel = document.getElementById('bookingModalCancel');
+const bookingModalSave = document.getElementById('bookingModalSave');
+const bookingModalCancelBooking = document.getElementById('bookingModalCancelBooking');
+const bookingModalTitle = document.getElementById('bookingModalTitle');
+const bookingModalStatus = document.getElementById('bookingModalStatus');
+const bookingServiceSelect = document.getElementById('bookingServiceSelect');
+const bookingResourceSelect = document.getElementById('bookingResourceSelect');
+const bookingDateInput = document.getElementById('bookingDateInput');
+const bookingStartSelect = document.getElementById('bookingStartSelect');
+const bookingCustomerSelect = document.getElementById('bookingCustomerSelect');
+const bookingCustomerNameInput = document.getElementById('bookingCustomerNameInput');
+const bookingCustomerPhoneInput = document.getElementById('bookingCustomerPhoneInput');
+const bookingCustomerEmailInput = document.getElementById('bookingCustomerEmailInput');
+const bookingStatusSelect = document.getElementById('bookingStatusSelect');
+const bookingNoteInput = document.getElementById('bookingNoteInput');
+const bookingVoucherCodeInput = document.getElementById('bookingVoucherCodeInput');
+const bookingVoucherValidateBtn = document.getElementById('bookingVoucherValidateBtn');
+const bookingVoucherStatus = document.getElementById('bookingVoucherStatus');
 
 // Builder elements
 const tplSelect = document.getElementById('tplSelect');
@@ -105,6 +196,12 @@ const FONT_OPTIONS = [
   'Lato, Arial, sans-serif'
 ];
 
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SCHEDULE_START_MIN = 6 * 60;
+const SCHEDULE_END_MIN = 22 * 60;
+const SCHEDULE_STEP_MIN = 15;
+const SCHEDULE_ROW_HEIGHT = 20;
+
 const state = {
   templates: [],
   templateMeta: new Map(),
@@ -136,7 +233,38 @@ const state = {
   helpContent: '',
   testMode: false,
   version: '',
-  valueOptions: []
+  syncPendingCount: 0,
+  syncErrorCount: 0,
+  syncTimerId: null,
+  syncRunning: false,
+  valueOptions: [],
+  services: [],
+  resources: [],
+  servicesSearch: '',
+  resourcesSearch: '',
+  editingServiceId: null,
+  editingResourceId: null,
+  resourceServiceOptions: [],
+  resourceServiceIds: [],
+  resourceRulesDraft: [],
+  resourceExceptionsDraft: [],
+  resourceExceptionDeletedIds: [],
+  scheduleDate: '',
+  scheduleServiceId: '',
+  scheduleResourceId: '',
+  scheduleServices: [],
+  scheduleResources: [],
+  scheduleCustomers: [],
+  scheduleBookings: [],
+  editingBookingId: null,
+  bookingSlotHintIso: '',
+  editingBookingSnapshot: null,
+  editingBookingOriginalVoucherCode: '',
+  bookingVoucherId: '',
+  bookingVoucherCode: '',
+  bookingVoucherState: '',
+  csvImportPreview: null,
+  csvImportBusy: false
 };
 
 function generateSerial() {
@@ -323,12 +451,1908 @@ function setStatus(message, isError = false) {
   if (message) showBanner(message, isError ? 'error' : 'success');
 }
 
+function updateVoucherActionButtonsState() {
+  const hasVoucher = Boolean(state.currentVoucher?.id);
+  const canExport = hasVoucher && Boolean(state.currentTemplateId);
+  if (btnSaveVoucher) btnSaveVoucher.disabled = !hasVoucher;
+  if (btnSaveCopy) btnSaveCopy.disabled = !hasVoucher;
+  if (exportBtn) exportBtn.disabled = !canExport;
+  if (exportPngBtn) exportPngBtn.disabled = !canExport;
+}
+
+function setImportCsvStatus(message, isError = false) {
+  if (!importCsvStatus) return;
+  importCsvStatus.textContent = message || '';
+  importCsvStatus.classList.toggle('error', isError);
+}
+
+function setImportCsvBusy(isBusy) {
+  state.csvImportBusy = Boolean(isBusy);
+  if (btnImportCsv) btnImportCsv.disabled = state.csvImportBusy;
+  if (importCsvConfirm) importCsvConfirm.disabled = state.csvImportBusy || !state.csvImportPreview?.token;
+  if (importCsvCancel) importCsvCancel.disabled = state.csvImportBusy;
+  if (importCsvClose) importCsvClose.disabled = state.csvImportBusy;
+}
+
+function closeImportCsvModal() {
+  if (!importCsvModal || state.csvImportBusy) return;
+  importCsvModal.classList.remove('open');
+  importCsvModal.setAttribute('aria-hidden', 'true');
+}
+
+function openImportCsvModal() {
+  if (!importCsvModal) return;
+  importCsvModal.classList.add('open');
+  importCsvModal.setAttribute('aria-hidden', 'false');
+}
+
+function renderImportCsvPreview() {
+  const preview = state.csvImportPreview;
+  if (!importCsvBody) return;
+  if (!preview) {
+    if (importCsvFilePath) importCsvFilePath.textContent = '';
+    importCsvBody.innerHTML = '<p>No import preview available.</p>';
+    setImportCsvStatus('');
+    setImportCsvBusy(false);
+    return;
+  }
+
+  if (importCsvFilePath) importCsvFilePath.textContent = preview.filePath || '';
+  const rows = Array.isArray(preview.rows) ? preview.rows : [];
+  const invalidRows = Array.isArray(preview.invalidSamples)
+    ? preview.invalidSamples
+    : rows.filter((row) => row.status === 'invalid');
+  const rowHtml = rows
+    .map((row) => {
+      const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+      const errors = Array.isArray(row.errors) ? row.errors : [];
+      return `
+        <tr>
+          <td>${escapeHtml(String(row.rowNumber || ''))}</td>
+          <td>${escapeHtml(row.id || '')}</td>
+          <td class="mono">${escapeHtml(row.code || '')}</td>
+          <td>${escapeHtml(row.recipientName || '')}</td>
+          <td>${escapeHtml(row.templateId || '')}</td>
+          <td>${escapeHtml(row.status || '')}</td>
+          <td>${escapeHtml(errors.join('; ') || warnings.join('; ') || '')}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const invalidDetails = invalidRows.length
+    ? `
+      <h4>Invalid Rows</h4>
+      <ul>
+        ${invalidRows
+          .map(
+            (row) =>
+              `<li>Row ${escapeHtml(String(row.rowNumber || ''))}: ${escapeHtml(
+                (Array.isArray(row.errors) ? row.errors.join('; ') : '') || 'Invalid data'
+              )}</li>`
+          )
+          .join('')}
+      </ul>
+    `
+    : '';
+
+  importCsvBody.innerHTML = `
+    <div class="saved-meta" style="margin-bottom:8px;">
+      Total: ${Number(preview.totalRows || 0)} | Valid: ${Number(preview.validRows || 0)} | Invalid: ${Number(
+    preview.invalidRows || 0
+  )} | Empty: ${Number(preview.emptyRows || 0)} | Warnings: ${Number(preview.warningsCount || 0)}
+    </div>
+    <div class="table-wrap">
+      <table class="saved-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>ID</th>
+            <th>Code</th>
+            <th>Recipient</th>
+            <th>Template</th>
+            <th>Status</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>${rowHtml || '<tr><td colspan="7">No preview rows</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${invalidDetails}
+  `;
+
+  setImportCsvStatus('Review preview and click Import to continue.');
+  setImportCsvBusy(false);
+  if (importCsvConfirm) {
+    const canImport = Boolean(preview.token) && Number(preview.validRows || 0) > 0;
+    importCsvConfirm.disabled = !canImport;
+  }
+}
+
+async function handleImportCsv() {
+  if (state.csvImportBusy) return;
+  setImportCsvBusy(true);
+  setStatus('Preparing CSV import preview...');
+  try {
+    const res = await window.api.vouchers.importCsv();
+    if (res?.canceled) {
+      setStatus('CSV import canceled');
+      setImportCsvBusy(false);
+      return;
+    }
+    if (!res?.ok || !res.preview) {
+      setStatus(res?.error || 'Failed to prepare CSV import', true);
+      setImportCsvBusy(false);
+      return;
+    }
+    state.csvImportPreview = res.preview;
+    renderImportCsvPreview();
+    openImportCsvModal();
+  } catch (err) {
+    setStatus(err?.message || 'Failed to prepare CSV import', true);
+    setImportCsvBusy(false);
+  }
+}
+
+async function confirmImportCsv() {
+  const token = String(state.csvImportPreview?.token || '').trim();
+  if (!token || state.csvImportBusy) return;
+  setImportCsvBusy(true);
+  setImportCsvStatus('Importing...');
+  try {
+    const res = await window.api.vouchers.confirmImportCsv({ token });
+    if (!res?.ok) {
+      setImportCsvStatus(res?.error || 'Import failed', true);
+      setStatus(res?.error || 'Import failed', true);
+      setImportCsvBusy(false);
+      return;
+    }
+    const summary = res.summary || {};
+    const importedCount = Number(summary.importedCount || 0);
+    const skippedCount = Number(summary.skippedCount || 0);
+    const warningsCount = Number(summary.warningsCount || 0);
+    const errorCount = Number(summary.errorCount || 0);
+    const message = `CSV import complete: ${importedCount} imported, ${skippedCount} skipped, ${warningsCount} warnings, ${errorCount} errors`;
+    setStatus(message, errorCount > 0);
+
+    state.csvImportPreview = null;
+    await loadSavedList();
+    renderSavedList();
+    await loadVoucherStatusList();
+    await refreshSyncIndicator();
+    setImportCsvBusy(false);
+    closeImportCsvModal();
+  } catch (err) {
+    setImportCsvStatus(err?.message || 'Import failed', true);
+    setStatus(err?.message || 'Import failed', true);
+    setImportCsvBusy(false);
+  }
+}
+
 function setBuilderStatus(message, isError = false) {
   if (builderStatus) {
     builderStatus.textContent = message || '';
     builderStatus.classList.toggle('error', isError);
   }
   if (message) showBanner(message, isError ? 'error' : 'success');
+}
+
+function setInlineStatus(element, message, isError = false, showToast = true) {
+  if (element) {
+    element.textContent = message || '';
+    element.classList.toggle('error', isError);
+  }
+  if (message && showToast) {
+    showBanner(message, isError ? 'error' : 'success');
+  }
+}
+
+function setServicesStatus(message, isError = false) {
+  setInlineStatus(servicesStatus, message, isError, true);
+}
+
+function setResourcesStatus(message, isError = false) {
+  setInlineStatus(resourcesStatus, message, isError, true);
+}
+
+function setServiceModalStatus(message, isError = false) {
+  setInlineStatus(serviceModalStatus, message, isError, false);
+}
+
+function setResourceModalStatus(message, isError = false) {
+  setInlineStatus(resourceModalStatus, message, isError, false);
+}
+
+function setScheduleStatus(message, isError = false) {
+  setInlineStatus(scheduleStatus, message, isError, false);
+}
+
+function setBookingModalStatus(message, isError = false) {
+  setInlineStatus(bookingModalStatus, message, isError, false);
+}
+
+function setBookingVoucherStatus(message, isError = false) {
+  setInlineStatus(bookingVoucherStatus, message, isError, false);
+}
+
+function renderSyncIndicator({ pendingCount = 0, errorCount = 0, unavailable = false } = {}) {
+  if (!syncIndicator) return;
+  const pending = Math.max(0, Number(pendingCount) || 0);
+  const errors = Math.max(0, Number(errorCount) || 0);
+  state.syncPendingCount = pending;
+  state.syncErrorCount = errors;
+
+  syncIndicator.classList.remove('pending', 'error');
+  if (unavailable) {
+    syncIndicator.textContent = 'Sync: unavailable';
+    syncIndicator.classList.add('error');
+    return;
+  }
+
+  if (errors > 0) {
+    syncIndicator.classList.add('error');
+  } else if (pending > 0) {
+    syncIndicator.classList.add('pending');
+  }
+
+  if (pending > 0) {
+    syncIndicator.textContent = `Sync: ${pending} pending`;
+    return;
+  }
+  if (errors > 0) {
+    syncIndicator.textContent = `Sync: ${errors} errors`;
+    return;
+  }
+  syncIndicator.textContent = 'Sync: up to date';
+}
+
+async function refreshSyncIndicator() {
+  if (!window.api?.sync?.getStatus) return;
+  if (state.syncRunning) return;
+  try {
+    const res = await window.api.sync.getStatus();
+    if (!res?.ok) {
+      renderSyncIndicator({ unavailable: true });
+      return;
+    }
+    renderSyncIndicator(res.data || {});
+  } catch (err) {
+    console.error(err);
+    renderSyncIndicator({ unavailable: true });
+  }
+}
+
+function setSyncRunning(isRunning) {
+  state.syncRunning = isRunning;
+  if (btnSyncNow) {
+    btnSyncNow.disabled = isRunning;
+  }
+  if (!syncIndicator) return;
+  if (isRunning) {
+    syncIndicator.classList.remove('error');
+    syncIndicator.classList.add('pending');
+    syncIndicator.textContent = 'Sync: running...';
+  }
+}
+
+function formatSyncConflict(conflict) {
+  if (!conflict || typeof conflict !== 'object') return 'Booking conflict';
+  const resourceId = conflict.resourceId || conflict?.conflictingBooking?.resourceId;
+  const startAt = conflict.startAt || '';
+  const endAt = conflict.endAt || '';
+  const parts = ['Booking conflict'];
+  if (resourceId) {
+    parts.push(`Resource ${resourceId}`);
+  }
+  if (startAt && endAt) {
+    const startText = new Date(startAt).toLocaleString();
+    const endText = new Date(endAt).toLocaleTimeString();
+    parts.push(`${startText} - ${endText}`);
+  } else if (startAt) {
+    parts.push(new Date(startAt).toLocaleString());
+  }
+  return parts.join(' · ');
+}
+
+async function refreshDataAfterSync() {
+  await loadServices();
+  await loadResources();
+  await loadSavedList();
+  await loadVoucherStatusList();
+  if (sectionSchedule?.style.display !== 'none') {
+    await initScheduleSection();
+  }
+}
+
+async function runSyncNow() {
+  if (!window.api?.sync?.run) return;
+  if (state.syncRunning) return;
+  setSyncRunning(true);
+  try {
+    const res = await window.api.sync.run();
+    if (!res?.ok) {
+      showBanner(res?.error || 'Sync failed', 'error');
+      return;
+    }
+    const data = res.data || {};
+    const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+    const pushedCount = Number(data?.pushed?.acked || 0);
+    const pulledCount = Number(data?.pulled?.count || 0);
+
+    if (conflicts.length) {
+      showBanner(`${conflicts.length} booking conflict(s) detected`, 'error');
+      showBanner(formatSyncConflict(conflicts[0]), 'error');
+    } else if (pushedCount || pulledCount) {
+      showBanner(`Sync complete: ${pushedCount} pushed, ${pulledCount} pulled`, 'success');
+    } else {
+      showBanner('Sync complete', 'success');
+    }
+    await refreshDataAfterSync();
+  } catch (err) {
+    showBanner(err?.message || 'Sync failed', 'error');
+  } finally {
+    setSyncRunning(false);
+    await refreshSyncIndicator();
+  }
+}
+
+function resetBookingVoucherLink() {
+  state.bookingVoucherId = '';
+  state.bookingVoucherCode = '';
+  state.bookingVoucherState = '';
+  setBookingVoucherStatus('');
+}
+
+async function validateVoucherForBookingModal() {
+  const rawCode = (bookingVoucherCodeInput?.value || '').trim();
+  if (!rawCode) {
+    resetBookingVoucherLink();
+    return { ok: true, valid: false, empty: true };
+  }
+
+  try {
+    const res = await window.api.vouchers.validateCode(rawCode);
+    if (!res?.ok) {
+      resetBookingVoucherLink();
+      setBookingVoucherStatus(res?.error || 'Failed to validate voucher', true);
+      return { ok: false, valid: false };
+    }
+
+    const data = res.data || {};
+    state.bookingVoucherState = String(data.status || '').trim().toLowerCase();
+    state.bookingVoucherCode = String(data.code || rawCode).trim();
+    state.bookingVoucherId = data.voucherId ? String(data.voucherId).trim() : '';
+
+    if (data.valid) {
+      const valueText = data.value ? ` (${data.value})` : '';
+      setBookingVoucherStatus(`Voucher ${state.bookingVoucherCode} is valid${valueText}`);
+      return { ok: true, valid: true };
+    }
+
+    if (state.bookingVoucherState === 'redeemed') {
+      setBookingVoucherStatus('Voucher has already been redeemed', true);
+    } else if (state.bookingVoucherState === 'expired') {
+      setBookingVoucherStatus('Voucher is expired', true);
+    } else {
+      setBookingVoucherStatus('Voucher not found', true);
+    }
+    return { ok: true, valid: false };
+  } catch (err) {
+    console.error(err);
+    resetBookingVoucherLink();
+    setBookingVoucherStatus(err.message || 'Failed to validate voucher', true);
+    return { ok: false, valid: false };
+  }
+}
+
+function formatCentsForInput(cents) {
+  const parsed = Number.parseInt(cents, 10);
+  const safe = Number.isFinite(parsed) ? parsed : 0;
+  return (safe / 100).toFixed(2);
+}
+
+function parseEuroInputToCents(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const normalized = raw.replace(/\s+/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
+}
+
+function formatMoneyFromCents(cents, currency = 'EUR') {
+  const parsed = Number.parseInt(cents, 10);
+  const safe = Number.isFinite(parsed) ? parsed : 0;
+  return `${(safe / 100).toFixed(2)} ${String(currency || 'EUR').toUpperCase()}`;
+}
+
+function schedulePad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function todayDateText() {
+  const now = new Date();
+  return `${now.getFullYear()}-${schedulePad2(now.getMonth() + 1)}-${schedulePad2(now.getDate())}`;
+}
+
+function dateFromDateText(dateText) {
+  const normalized = normalizeDateValue(dateText);
+  if (!normalized) return null;
+  const parts = normalized.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  if (Number.isNaN(date.valueOf())) return null;
+  return date;
+}
+
+function addDaysDateText(dateText, days = 0) {
+  const date = dateFromDateText(dateText);
+  if (!date) return '';
+  date.setDate(date.getDate() + Number(days || 0));
+  return `${date.getFullYear()}-${schedulePad2(date.getMonth() + 1)}-${schedulePad2(date.getDate())}`;
+}
+
+function minutesToTimeText(minutes) {
+  const safe = Math.max(0, Number.parseInt(minutes, 10) || 0);
+  const hh = Math.floor(safe / 60);
+  const mm = safe % 60;
+  return `${schedulePad2(hh)}:${schedulePad2(mm)}`;
+}
+
+function timeTextToMinutes(value) {
+  const normalized = normalizeTimeInputValue(value);
+  if (!normalized) return null;
+  const [h, m] = normalized.split(':').map((part) => Number.parseInt(part, 10));
+  return h * 60 + m;
+}
+
+function localDateTimeToIso(dateText, timeText) {
+  const base = dateFromDateText(dateText);
+  const minutes = timeTextToMinutes(timeText);
+  if (!base || minutes === null) return '';
+  const date = new Date(base.getTime());
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date.toISOString();
+}
+
+function dateTextRangeToIso(dateText) {
+  const start = dateFromDateText(dateText);
+  if (!start) return { from: '', to: '' };
+  const end = new Date(start.getTime());
+  end.setDate(end.getDate() + 1);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function isoToLocalDateText(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return '';
+  return `${parsed.getFullYear()}-${schedulePad2(parsed.getMonth() + 1)}-${schedulePad2(parsed.getDate())}`;
+}
+
+function isoToLocalTimeText(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return '';
+  return `${schedulePad2(parsed.getHours())}:${schedulePad2(parsed.getMinutes())}`;
+}
+
+function isoToMinutesInLocalDay(value, dateText) {
+  const parsed = new Date(value);
+  const base = dateFromDateText(dateText);
+  if (Number.isNaN(parsed.valueOf()) || !base) return null;
+  return Math.round((parsed.getTime() - base.getTime()) / 60000);
+}
+
+function formatScheduleDateLabel(dateText) {
+  const date = dateFromDateText(dateText);
+  if (!date) return dateText || '';
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function serviceById(serviceId) {
+  return state.scheduleServices.find((item) => item.id === serviceId) || state.services.find((item) => item.id === serviceId) || null;
+}
+
+function resourceById(resourceId) {
+  return state.scheduleResources.find((item) => item.id === resourceId) || state.resources.find((item) => item.id === resourceId) || null;
+}
+
+function customerById(customerId) {
+  return state.scheduleCustomers.find((item) => item.id === customerId) || null;
+}
+
+function serviceNameById(serviceId) {
+  return serviceById(serviceId)?.name || serviceId || '';
+}
+
+function resourceNameById(resourceId) {
+  return resourceById(resourceId)?.name || resourceId || '';
+}
+
+function customerNameById(customerId) {
+  return customerById(customerId)?.name || customerId || '';
+}
+
+function renderScheduleFilters() {
+  if (scheduleDateInput) {
+    scheduleDateInput.value = state.scheduleDate || todayDateText();
+  }
+
+  if (scheduleServiceSelect) {
+    const previous = state.scheduleServiceId || '';
+    scheduleServiceSelect.innerHTML = '';
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = 'All services';
+    scheduleServiceSelect.appendChild(allOption);
+    state.scheduleServices.forEach((service) => {
+      const option = document.createElement('option');
+      option.value = service.id;
+      option.textContent = service.name;
+      scheduleServiceSelect.appendChild(option);
+    });
+    scheduleServiceSelect.value = previous;
+  }
+
+  if (scheduleResourceSelect) {
+    const previous = state.scheduleResourceId || '';
+    scheduleResourceSelect.innerHTML = '';
+    state.scheduleResources.forEach((resource) => {
+      const option = document.createElement('option');
+      option.value = resource.id;
+      option.textContent = resource.name;
+      scheduleResourceSelect.appendChild(option);
+    });
+    if (previous && state.scheduleResources.some((item) => item.id === previous)) {
+      scheduleResourceSelect.value = previous;
+    } else if (state.scheduleResources.length > 0) {
+      scheduleResourceSelect.value = state.scheduleResources[0].id;
+      state.scheduleResourceId = state.scheduleResources[0].id;
+    } else {
+      state.scheduleResourceId = '';
+    }
+  }
+}
+
+function renderBookingServiceSelect(selectedId = '') {
+  if (!bookingServiceSelect) return;
+  bookingServiceSelect.innerHTML = '';
+  state.scheduleServices.forEach((service) => {
+    const option = document.createElement('option');
+    option.value = service.id;
+    option.textContent = `${service.name} (${service.durationMin || 30} min)`;
+    bookingServiceSelect.appendChild(option);
+  });
+  if (selectedId && !state.scheduleServices.some((item) => item.id === selectedId)) {
+    const fallback = document.createElement('option');
+    fallback.value = selectedId;
+    fallback.textContent = selectedId;
+    bookingServiceSelect.appendChild(fallback);
+  }
+  if (selectedId && state.scheduleServices.some((item) => item.id === selectedId)) {
+    bookingServiceSelect.value = selectedId;
+  } else if (selectedId) {
+    bookingServiceSelect.value = selectedId;
+  } else if (state.scheduleServiceId && state.scheduleServices.some((item) => item.id === state.scheduleServiceId)) {
+    bookingServiceSelect.value = state.scheduleServiceId;
+  } else if (state.scheduleServices.length > 0) {
+    bookingServiceSelect.value = state.scheduleServices[0].id;
+  }
+}
+
+function renderBookingResourceSelect(selectedId = '') {
+  if (!bookingResourceSelect) return;
+  bookingResourceSelect.innerHTML = '';
+  state.scheduleResources.forEach((resource) => {
+    const option = document.createElement('option');
+    option.value = resource.id;
+    option.textContent = resource.name;
+    bookingResourceSelect.appendChild(option);
+  });
+  if (selectedId && !state.scheduleResources.some((item) => item.id === selectedId)) {
+    const fallback = document.createElement('option');
+    fallback.value = selectedId;
+    fallback.textContent = selectedId;
+    bookingResourceSelect.appendChild(fallback);
+  }
+  if (selectedId && state.scheduleResources.some((item) => item.id === selectedId)) {
+    bookingResourceSelect.value = selectedId;
+  } else if (selectedId) {
+    bookingResourceSelect.value = selectedId;
+  } else if (state.scheduleResourceId && state.scheduleResources.some((item) => item.id === state.scheduleResourceId)) {
+    bookingResourceSelect.value = state.scheduleResourceId;
+  } else if (state.scheduleResources.length > 0) {
+    bookingResourceSelect.value = state.scheduleResources[0].id;
+  }
+}
+
+function renderBookingCustomerSelect(selectedId = '') {
+  if (!bookingCustomerSelect) return;
+  bookingCustomerSelect.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select customer';
+  bookingCustomerSelect.appendChild(placeholder);
+  state.scheduleCustomers.forEach((customer) => {
+    const option = document.createElement('option');
+    option.value = customer.id;
+    option.textContent = customer.name;
+    bookingCustomerSelect.appendChild(option);
+  });
+  if (selectedId && !state.scheduleCustomers.some((item) => item.id === selectedId)) {
+    const fallback = document.createElement('option');
+    fallback.value = selectedId;
+    fallback.textContent = selectedId;
+    bookingCustomerSelect.appendChild(fallback);
+  }
+  if (selectedId && state.scheduleCustomers.some((item) => item.id === selectedId)) {
+    bookingCustomerSelect.value = selectedId;
+  } else if (selectedId) {
+    bookingCustomerSelect.value = selectedId;
+  } else {
+    bookingCustomerSelect.value = '';
+  }
+}
+
+async function loadScheduleLookups() {
+  if (!state.scheduleDate) state.scheduleDate = todayDateText();
+
+  try {
+    const [servicesRes, resourcesRes, customersRes] = await Promise.all([
+      window.api.services.list(500, ''),
+      window.api.resources.list(500, ''),
+      window.api.customers.list(500, '')
+    ]);
+
+    if (!servicesRes?.ok) throw new Error(servicesRes?.error || 'Failed to load services');
+    if (!resourcesRes?.ok) throw new Error(resourcesRes?.error || 'Failed to load resources');
+    if (!customersRes?.ok) throw new Error(customersRes?.error || 'Failed to load customers');
+
+    state.scheduleServices = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+    state.scheduleResources = Array.isArray(resourcesRes.data) ? resourcesRes.data : [];
+    state.scheduleCustomers = Array.isArray(customersRes.data) ? customersRes.data : [];
+
+    if (state.scheduleServiceId && !state.scheduleServices.some((item) => item.id === state.scheduleServiceId)) {
+      state.scheduleServiceId = '';
+    }
+    if (state.scheduleResourceId && !state.scheduleResources.some((item) => item.id === state.scheduleResourceId)) {
+      state.scheduleResourceId = '';
+    }
+
+    renderScheduleFilters();
+    setScheduleStatus('');
+    return true;
+  } catch (err) {
+    console.error(err);
+    setScheduleStatus(err.message || 'Failed to load schedule lookups', true);
+    return false;
+  }
+}
+
+function renderScheduleDayHeader() {
+  if (!scheduleDayTitle) return;
+  const dateLabel = formatScheduleDateLabel(state.scheduleDate);
+  const resourceLabel = state.scheduleResourceId ? resourceNameById(state.scheduleResourceId) : '';
+  const serviceLabel = state.scheduleServiceId ? serviceNameById(state.scheduleServiceId) : '';
+  let text = dateLabel || 'Day';
+  if (resourceLabel) text += ` - ${resourceLabel}`;
+  if (serviceLabel) text += ` (${serviceLabel})`;
+  scheduleDayTitle.textContent = text;
+}
+
+function renderScheduleGrid() {
+  if (!scheduleGrid) return;
+  scheduleGrid.innerHTML = '';
+  const rowsCount = Math.floor((SCHEDULE_END_MIN - SCHEDULE_START_MIN) / SCHEDULE_STEP_MIN);
+  const timelineHeight = rowsCount * SCHEDULE_ROW_HEIGHT;
+
+  const times = document.createElement('div');
+  times.className = 'schedule-times';
+  for (let i = 0; i < rowsCount; i += 1) {
+    const rowMinutes = SCHEDULE_START_MIN + i * SCHEDULE_STEP_MIN;
+    const cell = document.createElement('div');
+    cell.className = 'schedule-time-cell';
+    cell.textContent = rowMinutes % 60 === 0 ? minutesToTimeText(rowMinutes) : '';
+    times.appendChild(cell);
+  }
+
+  const canvas = document.createElement('div');
+  canvas.className = 'schedule-canvas';
+  canvas.style.height = `${timelineHeight}px`;
+  canvas.addEventListener('click', (event) => {
+    if (event.target.closest('.schedule-booking-block')) return;
+    if (!state.scheduleResourceId) {
+      setScheduleStatus('Select a resource first', true);
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const offsetY = Math.max(0, Math.min(rect.height - 1, event.clientY - rect.top));
+    const rowIndex = Math.floor(offsetY / SCHEDULE_ROW_HEIGHT);
+    const startMin = SCHEDULE_START_MIN + rowIndex * SCHEDULE_STEP_MIN;
+    openBookingModal(null, { date: state.scheduleDate, startMin });
+  });
+
+  let rendered = 0;
+  state.scheduleBookings.forEach((booking) => {
+    const startAt = new Date(booking.startAt);
+    const endAt = new Date(booking.endAt);
+    const dayStart = dateFromDateText(state.scheduleDate);
+    if (!dayStart || Number.isNaN(startAt.valueOf()) || Number.isNaN(endAt.valueOf()) || endAt <= startAt) return;
+    const dayEnd = new Date(dayStart.getTime());
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const clipStart = Math.max(startAt.getTime(), dayStart.getTime());
+    const clipEnd = Math.min(endAt.getTime(), dayEnd.getTime());
+    if (clipEnd <= clipStart) return;
+
+    const startMin = Math.round((clipStart - dayStart.getTime()) / 60000);
+    const endMin = Math.round((clipEnd - dayStart.getTime()) / 60000);
+    const visibleStart = Math.max(startMin, SCHEDULE_START_MIN);
+    const visibleEnd = Math.min(endMin, SCHEDULE_END_MIN);
+    if (visibleEnd <= visibleStart) return;
+
+    const top = ((visibleStart - SCHEDULE_START_MIN) / SCHEDULE_STEP_MIN) * SCHEDULE_ROW_HEIGHT;
+    const height = Math.max(18, ((visibleEnd - visibleStart) / SCHEDULE_STEP_MIN) * SCHEDULE_ROW_HEIGHT - 2);
+    const status = String(booking.status || 'confirmed').trim().toLowerCase();
+
+    const block = document.createElement('div');
+    block.className = `schedule-booking-block status-${status}`;
+    block.style.top = `${top}px`;
+    block.style.height = `${height}px`;
+    block.innerHTML = `
+      <div class="schedule-booking-time">${escapeHtml(isoToLocalTimeText(booking.startAt))} - ${escapeHtml(isoToLocalTimeText(booking.endAt))}</div>
+      <div>${escapeHtml(serviceNameById(booking.serviceId))}</div>
+      <div>${escapeHtml(customerNameById(booking.customerId))}</div>
+    `;
+    block.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openBookingModal(booking);
+    });
+    canvas.appendChild(block);
+    rendered += 1;
+  });
+
+  if (rendered === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'schedule-grid-empty';
+    empty.textContent = 'No bookings for selected day.';
+    canvas.appendChild(empty);
+  }
+
+  scheduleGrid.appendChild(times);
+  scheduleGrid.appendChild(canvas);
+}
+
+async function loadScheduleBookings() {
+  if (!state.scheduleDate) state.scheduleDate = todayDateText();
+  if (!state.scheduleResourceId) {
+    renderScheduleDayHeader();
+    state.scheduleBookings = [];
+    renderScheduleGrid();
+    if (!state.scheduleResources.length) {
+      setScheduleStatus('No active resources. Add one in Resources.', true);
+    } else {
+      setScheduleStatus('Select a resource to view schedule.', true);
+    }
+    return;
+  }
+
+  const range = dateTextRangeToIso(state.scheduleDate);
+  if (!range.from || !range.to) {
+    setScheduleStatus('Invalid schedule date', true);
+    return;
+  }
+
+  try {
+    const res = await window.api.bookings.list(range, [state.scheduleResourceId]);
+    if (!res?.ok) {
+      setScheduleStatus(res?.error || 'Failed to load bookings', true);
+      return;
+    }
+
+    const allBookings = Array.isArray(res.data) ? res.data : [];
+    state.scheduleBookings = state.scheduleServiceId
+      ? allBookings.filter((item) => item.serviceId === state.scheduleServiceId)
+      : allBookings;
+    renderScheduleDayHeader();
+    renderScheduleGrid();
+    setScheduleStatus('');
+  } catch (err) {
+    console.error(err);
+    setScheduleStatus(err.message || 'Failed to load bookings', true);
+  }
+}
+
+async function openBookingModal(booking = null, seed = {}) {
+  const ready = await loadScheduleLookups();
+  if (!ready) return;
+  if (!state.scheduleResources.length) {
+    setScheduleStatus('No active resources. Add one in Resources.', true);
+    return;
+  }
+  if (!state.scheduleServices.length) {
+    setScheduleStatus('No active services. Add one in Services.', true);
+    return;
+  }
+
+  state.editingBookingId = booking?.id || null;
+  state.bookingSlotHintIso = booking?.startAt || '';
+  state.editingBookingSnapshot = booking
+    ? {
+        serviceId: booking.serviceId || '',
+        resourceId: booking.resourceId || '',
+        startAt: booking.startAt || '',
+        date: isoToLocalDateText(booking.startAt || '')
+      }
+    : null;
+  state.editingBookingOriginalVoucherCode = String(booking?.voucherCode || '').trim();
+  const dateValue = normalizeDateValue(seed.date || booking?.startAt || state.scheduleDate || todayDateText());
+  if (seed.startMin !== undefined && seed.startMin !== null) {
+    const slotHint = localDateTimeToIso(dateValue, minutesToTimeText(seed.startMin));
+    if (slotHint) state.bookingSlotHintIso = slotHint;
+  }
+
+  if (bookingModalTitle) {
+    bookingModalTitle.textContent = state.editingBookingId ? 'Edit Booking' : 'Create Booking';
+  }
+  if (bookingModalCancelBooking) {
+    bookingModalCancelBooking.style.display = state.editingBookingId ? 'inline-flex' : 'none';
+  }
+
+  renderBookingServiceSelect(booking?.serviceId || state.scheduleServiceId);
+  renderBookingResourceSelect(booking?.resourceId || state.scheduleResourceId);
+  renderBookingCustomerSelect(booking?.customerId || '');
+
+  if (bookingDateInput) bookingDateInput.value = dateValue;
+  if (bookingStatusSelect) bookingStatusSelect.value = String(booking?.status || 'confirmed').toLowerCase();
+  if (bookingNoteInput) bookingNoteInput.value = booking?.note || '';
+  if (bookingCustomerNameInput) bookingCustomerNameInput.value = '';
+  if (bookingCustomerPhoneInput) bookingCustomerPhoneInput.value = '';
+  if (bookingCustomerEmailInput) bookingCustomerEmailInput.value = '';
+  if (bookingVoucherCodeInput) bookingVoucherCodeInput.value = booking?.voucherCode || '';
+  state.bookingVoucherId = String(booking?.voucherId || '').trim();
+  state.bookingVoucherCode = String(booking?.voucherCode || '').trim();
+  state.bookingVoucherState = '';
+  setBookingVoucherStatus('');
+
+  bookingModal?.classList.add('open');
+  bookingModal?.setAttribute('aria-hidden', 'false');
+  setBookingModalStatus('');
+  if (booking?.voucherCode) {
+    await validateVoucherForBookingModal();
+  } else if (booking?.voucherId) {
+    setBookingVoucherStatus(`Linked voucher id: ${booking.voucherId}`);
+  }
+  await refreshBookingStartSlots(state.bookingSlotHintIso);
+}
+
+function closeBookingModal() {
+  state.editingBookingId = null;
+  state.bookingSlotHintIso = '';
+  state.editingBookingSnapshot = null;
+  state.editingBookingOriginalVoucherCode = '';
+  resetBookingVoucherLink();
+  if (bookingVoucherCodeInput) bookingVoucherCodeInput.value = '';
+  bookingModal?.classList.remove('open');
+  bookingModal?.setAttribute('aria-hidden', 'true');
+  setBookingModalStatus('');
+}
+
+function bookingDurationForService(serviceId) {
+  const service = serviceById(serviceId);
+  return Math.max(1, Number.parseInt(service?.durationMin, 10) || 30);
+}
+
+function normalizeSlotItems(slotItems, serviceId) {
+  const durationMin = bookingDurationForService(serviceId);
+  const normalized = [];
+  (Array.isArray(slotItems) ? slotItems : []).forEach((item) => {
+    if (typeof item === 'string') {
+      const startAt = item;
+      const start = new Date(startAt);
+      if (Number.isNaN(start.valueOf())) return;
+      const endAt = new Date(start.getTime() + durationMin * 60000).toISOString();
+      normalized.push({ startAt, endAt });
+      return;
+    }
+    if (item && typeof item === 'object') {
+      const startAt = item.startAt;
+      if (!startAt) return;
+      let endAt = item.endAt;
+      if (!endAt) {
+        const start = new Date(startAt);
+        if (Number.isNaN(start.valueOf())) return;
+        endAt = new Date(start.getTime() + durationMin * 60000).toISOString();
+      }
+      normalized.push({ startAt, endAt });
+    }
+  });
+  return normalized;
+}
+
+async function refreshBookingStartSlots(preferredIso = '') {
+  const serviceId = bookingServiceSelect?.value || '';
+  const resourceId = bookingResourceSelect?.value || '';
+  const date = normalizeDateValue(bookingDateInput?.value || '');
+  if (!bookingStartSelect) return;
+
+  bookingStartSelect.innerHTML = '';
+
+  if (!serviceId || !resourceId || !date) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select service/resource/date';
+    bookingStartSelect.appendChild(placeholder);
+    return;
+  }
+
+  try {
+    const res = await window.api.bookings.computeSlots({
+      serviceId,
+      resourceId,
+      from: date,
+      to: date,
+      includeEndAt: true
+    });
+
+    if (!res?.ok) {
+      setBookingModalStatus(res?.error || 'Failed to compute slots', true);
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'No available slots';
+      bookingStartSelect.appendChild(empty);
+      return;
+    }
+
+    const slots = normalizeSlotItems(res.data, serviceId);
+    const canKeepOriginalSlot =
+      Boolean(state.editingBookingId) &&
+      preferredIso &&
+      preferredIso === state.editingBookingSnapshot?.startAt &&
+      serviceId === state.editingBookingSnapshot?.serviceId &&
+      resourceId === state.editingBookingSnapshot?.resourceId &&
+      date === state.editingBookingSnapshot?.date;
+
+    if (canKeepOriginalSlot && !slots.some((slot) => slot.startAt === preferredIso)) {
+      const preferredStart = new Date(preferredIso);
+      if (!Number.isNaN(preferredStart.valueOf())) {
+        const duration = bookingDurationForService(serviceId);
+        slots.push({
+          startAt: preferredIso,
+          endAt: new Date(preferredStart.getTime() + duration * 60000).toISOString()
+        });
+      }
+    }
+    slots.sort((a, b) => String(a.startAt || '').localeCompare(String(b.startAt || '')));
+
+    if (!slots.length) {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'No available slots';
+      bookingStartSelect.appendChild(empty);
+      return;
+    }
+
+    slots.forEach((slot) => {
+      const option = document.createElement('option');
+      option.value = slot.startAt;
+      option.dataset.endAt = slot.endAt;
+      option.textContent = `${isoToLocalTimeText(slot.startAt)} - ${isoToLocalTimeText(slot.endAt)}`;
+      bookingStartSelect.appendChild(option);
+    });
+
+    let selectedValue = preferredIso || bookingStartSelect.value || '';
+    if (!selectedValue || !slots.some((slot) => slot.startAt === selectedValue)) {
+      selectedValue = slots[0].startAt;
+    }
+    bookingStartSelect.value = selectedValue;
+    state.bookingSlotHintIso = selectedValue;
+    setBookingModalStatus('');
+  } catch (err) {
+    console.error(err);
+    setBookingModalStatus(err.message || 'Failed to compute slots', true);
+  }
+}
+
+function selectedBookingEndAt() {
+  const option = bookingStartSelect?.options?.[bookingStartSelect.selectedIndex];
+  return option?.dataset?.endAt || '';
+}
+
+async function ensureBookingCustomerId() {
+  const existingCustomerId = bookingCustomerSelect?.value || '';
+  const newCustomerName = (bookingCustomerNameInput?.value || '').trim();
+  if (!newCustomerName) {
+    if (existingCustomerId) return existingCustomerId;
+    throw new Error('Customer is required');
+  }
+
+  const payload = {
+    name: newCustomerName,
+    phone: (bookingCustomerPhoneInput?.value || '').trim() || null,
+    email: (bookingCustomerEmailInput?.value || '').trim() || null
+  };
+  const saveRes = await window.api.customers.save(payload);
+  if (!saveRes?.ok || !saveRes?.data?.id) {
+    throw new Error(saveRes?.error || 'Failed to create customer');
+  }
+
+  await loadScheduleLookups();
+  renderBookingCustomerSelect(saveRes.data.id);
+  return saveRes.data.id;
+}
+
+async function saveBookingFromModal() {
+  const serviceId = bookingServiceSelect?.value || '';
+  const resourceId = bookingResourceSelect?.value || '';
+  const date = normalizeDateValue(bookingDateInput?.value || '');
+  const startAt = bookingStartSelect?.value || '';
+  const status = String(bookingStatusSelect?.value || 'confirmed').trim().toLowerCase() || 'confirmed';
+  const note = (bookingNoteInput?.value || '').trim();
+  const voucherCodeInput = (bookingVoucherCodeInput?.value || '').trim();
+
+  if (!serviceId) {
+    setBookingModalStatus('Service is required', true);
+    return;
+  }
+  if (!resourceId) {
+    setBookingModalStatus('Resource is required', true);
+    return;
+  }
+  if (!date) {
+    setBookingModalStatus('Date is required', true);
+    return;
+  }
+  if (!startAt) {
+    setBookingModalStatus('Start time is required', true);
+    return;
+  }
+
+  try {
+    let voucherId = null;
+    let voucherCode = null;
+    if (voucherCodeInput) {
+      const voucherValidation = await validateVoucherForBookingModal();
+      if (!voucherValidation.ok) {
+        setBookingModalStatus('Voucher validation failed', true);
+        return;
+      }
+      if (!voucherValidation.valid) {
+        const canKeepExistingVoucherLink =
+          Boolean(state.editingBookingId) &&
+          voucherCodeInput === state.editingBookingOriginalVoucherCode;
+        if (!canKeepExistingVoucherLink) {
+          setBookingModalStatus('Voucher code is not valid', true);
+          return;
+        }
+      }
+      voucherId = state.bookingVoucherId || null;
+      voucherCode = state.bookingVoucherCode || voucherCodeInput;
+      if (!voucherCode) {
+        setBookingModalStatus('Voucher code is not valid', true);
+        return;
+      }
+    } else {
+      resetBookingVoucherLink();
+    }
+
+    const customerId = await ensureBookingCustomerId();
+    let endAt = selectedBookingEndAt();
+    if (!endAt) {
+      const durationMin = bookingDurationForService(serviceId);
+      const start = new Date(startAt);
+      if (Number.isNaN(start.valueOf())) throw new Error('Invalid selected start time');
+      endAt = new Date(start.getTime() + durationMin * 60000).toISOString();
+    }
+
+    const payload = {
+      id: state.editingBookingId || undefined,
+      serviceId,
+      resourceId,
+      customerId,
+      startAt,
+      endAt,
+      status,
+      note,
+      source: 'desktop',
+      voucherId,
+      voucherCode
+    };
+
+    const saveRes = await window.api.bookings.save(payload);
+    if (!saveRes?.ok) {
+      setBookingModalStatus(saveRes?.error || 'Failed to save booking', true);
+      return;
+    }
+
+    closeBookingModal();
+    state.scheduleDate = date;
+    state.scheduleResourceId = resourceId;
+    state.scheduleServiceId = scheduleServiceSelect?.value || state.scheduleServiceId;
+    renderScheduleFilters();
+    await loadScheduleBookings();
+    await refreshSyncIndicator();
+    setScheduleStatus('Booking saved');
+  } catch (err) {
+    console.error(err);
+    setBookingModalStatus(err.message || 'Failed to save booking', true);
+  }
+}
+
+async function cancelBookingFromModal() {
+  if (!state.editingBookingId) {
+    closeBookingModal();
+    return;
+  }
+
+  try {
+    let booking = state.scheduleBookings.find((item) => item.id === state.editingBookingId) || null;
+    if (!booking) {
+      const getRes = await window.api.bookings.get(state.editingBookingId);
+      if (!getRes?.ok || !getRes?.data) throw new Error(getRes?.error || 'Booking not found');
+      booking = getRes.data;
+    }
+
+    const payload = {
+      id: booking.id,
+      serviceId: booking.serviceId,
+      resourceId: booking.resourceId,
+      customerId: booking.customerId,
+      startAt: booking.startAt,
+      endAt: booking.endAt,
+      status: 'cancelled',
+      note: booking.note || '',
+      source: booking.source || 'desktop',
+      voucherId: booking.voucherId || null,
+      voucherCode: booking.voucherCode || null
+    };
+
+    const saveRes = await window.api.bookings.save(payload);
+    if (!saveRes?.ok) {
+      setBookingModalStatus(saveRes?.error || 'Failed to cancel booking', true);
+      return;
+    }
+
+    closeBookingModal();
+    await loadScheduleBookings();
+    await refreshSyncIndicator();
+    setScheduleStatus('Booking cancelled');
+  } catch (err) {
+    console.error(err);
+    setBookingModalStatus(err.message || 'Failed to cancel booking', true);
+  }
+}
+
+async function initScheduleSection() {
+  if (!state.scheduleDate) state.scheduleDate = todayDateText();
+  const ready = await loadScheduleLookups();
+  if (!ready) return;
+  await loadScheduleBookings();
+}
+
+function normalizeTimeInputValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw;
+  return '';
+}
+
+function createResourceRuleDraft(weekday) {
+  return {
+    id: '',
+    weekday,
+    startTime: '',
+    endTime: '',
+    breakStartTime: '',
+    breakEndTime: ''
+  };
+}
+
+function createDefaultResourceRulesDraft() {
+  return WEEKDAY_LABELS.map((_label, weekday) => createResourceRuleDraft(weekday));
+}
+
+function mapRuleToDraft(rule = {}) {
+  const breaks = Array.isArray(rule.breaks) ? rule.breaks : [];
+  const firstBreak = breaks[0] || {};
+  return {
+    id: String(rule.id || '').trim(),
+    weekday: Number.parseInt(rule.weekday, 10),
+    startTime: normalizeTimeInputValue(rule.startTime),
+    endTime: normalizeTimeInputValue(rule.endTime),
+    breakStartTime: normalizeTimeInputValue(rule.breakStartTime || firstBreak.startTime || ''),
+    breakEndTime: normalizeTimeInputValue(rule.breakEndTime || firstBreak.endTime || '')
+  };
+}
+
+function mapExceptionToDraft(ex = {}) {
+  return {
+    id: String(ex.id || '').trim(),
+    date: normalizeDateValue(ex.date),
+    isOff: Number(ex.isOff) ? 1 : 0,
+    startTime: normalizeTimeInputValue(ex.startTime),
+    endTime: normalizeTimeInputValue(ex.endTime),
+    note: String(ex.note || '').trim()
+  };
+}
+
+function sortResourceExceptionsDraft() {
+  state.resourceExceptionsDraft.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+function syncExceptionEditorInputs() {
+  const isOff = Boolean(exceptionIsOffInput?.checked);
+  if (exceptionStartInput) {
+    exceptionStartInput.disabled = isOff;
+    if (isOff) exceptionStartInput.value = '';
+  }
+  if (exceptionEndInput) {
+    exceptionEndInput.disabled = isOff;
+    if (isOff) exceptionEndInput.value = '';
+  }
+}
+
+function clearExceptionEditorInputs() {
+  if (exceptionDateInput) exceptionDateInput.value = '';
+  if (exceptionIsOffInput) exceptionIsOffInput.checked = true;
+  if (exceptionStartInput) exceptionStartInput.value = '';
+  if (exceptionEndInput) exceptionEndInput.value = '';
+  if (exceptionNoteInput) exceptionNoteInput.value = '';
+  syncExceptionEditorInputs();
+}
+
+function renderResourceRulesGrid() {
+  if (!resourceRulesGrid) return;
+  resourceRulesGrid.innerHTML = '';
+
+  state.resourceRulesDraft.forEach((rule, weekday) => {
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+
+    const day = document.createElement('div');
+    day.className = 'rule-day';
+    day.textContent = WEEKDAY_LABELS[weekday] || `Day ${weekday}`;
+
+    const startInput = document.createElement('input');
+    startInput.type = 'time';
+    startInput.value = rule.startTime || '';
+    startInput.placeholder = 'Start';
+    startInput.addEventListener('input', (e) => {
+      state.resourceRulesDraft[weekday].startTime = normalizeTimeInputValue(e.target.value);
+    });
+
+    const endInput = document.createElement('input');
+    endInput.type = 'time';
+    endInput.value = rule.endTime || '';
+    endInput.placeholder = 'End';
+    endInput.addEventListener('input', (e) => {
+      state.resourceRulesDraft[weekday].endTime = normalizeTimeInputValue(e.target.value);
+    });
+
+    const breakStartInput = document.createElement('input');
+    breakStartInput.type = 'time';
+    breakStartInput.value = rule.breakStartTime || '';
+    breakStartInput.placeholder = 'Break start';
+    breakStartInput.addEventListener('input', (e) => {
+      state.resourceRulesDraft[weekday].breakStartTime = normalizeTimeInputValue(e.target.value);
+    });
+
+    const breakEndInput = document.createElement('input');
+    breakEndInput.type = 'time';
+    breakEndInput.value = rule.breakEndTime || '';
+    breakEndInput.placeholder = 'Break end';
+    breakEndInput.addEventListener('input', (e) => {
+      state.resourceRulesDraft[weekday].breakEndTime = normalizeTimeInputValue(e.target.value);
+    });
+
+    row.appendChild(day);
+    row.appendChild(startInput);
+    row.appendChild(endInput);
+    row.appendChild(breakStartInput);
+    row.appendChild(breakEndInput);
+    resourceRulesGrid.appendChild(row);
+  });
+}
+
+function renderResourceExceptionsList() {
+  if (!resourceExceptionsList) return;
+  resourceExceptionsList.innerHTML = '';
+
+  if (!state.resourceExceptionsDraft.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No exceptions added.';
+    resourceExceptionsList.appendChild(empty);
+    return;
+  }
+
+  state.resourceExceptionsDraft.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'exception-item';
+    const safeDate = normalizeDateValue(item.date);
+    const isOff = Number(item.isOff) === 1;
+    const hoursText = isOff ? 'Off day' : `${item.startTime || '--:--'} - ${item.endTime || '--:--'}`;
+
+    const dateEl = document.createElement('div');
+    dateEl.className = 'exception-date';
+    dateEl.textContent = safeDate || '-';
+
+    const hoursEl = document.createElement('div');
+    hoursEl.className = 'exception-hours';
+    hoursEl.textContent = hoursText;
+
+    const noteEl = document.createElement('div');
+    noteEl.className = 'exception-note';
+    noteEl.textContent = item.note || '';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'danger exception-delete';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => {
+      const removed = state.resourceExceptionsDraft[index];
+      if (removed?.id) {
+        state.resourceExceptionDeletedIds.push(removed.id);
+        state.resourceExceptionDeletedIds = Array.from(new Set(state.resourceExceptionDeletedIds));
+      }
+      state.resourceExceptionsDraft.splice(index, 1);
+      renderResourceExceptionsList();
+    });
+
+    row.appendChild(dateEl);
+    row.appendChild(hoursEl);
+    row.appendChild(noteEl);
+    row.appendChild(deleteBtn);
+    resourceExceptionsList.appendChild(row);
+  });
+}
+
+function resetResourceAvailabilityDraft() {
+  state.resourceRulesDraft = createDefaultResourceRulesDraft();
+  state.resourceExceptionsDraft = [];
+  state.resourceExceptionDeletedIds = [];
+  renderResourceRulesGrid();
+  renderResourceExceptionsList();
+  clearExceptionEditorInputs();
+}
+
+function addOrUpdateResourceExceptionFromEditor() {
+  const date = normalizeDateValue(exceptionDateInput?.value || '');
+  if (!date) {
+    setResourceModalStatus('Exception date is required', true);
+    return;
+  }
+
+  const isOff = exceptionIsOffInput?.checked ? 1 : 0;
+  const startTime = normalizeTimeInputValue(exceptionStartInput?.value || '');
+  const endTime = normalizeTimeInputValue(exceptionEndInput?.value || '');
+  const note = String(exceptionNoteInput?.value || '').trim();
+
+  if (!isOff) {
+    if (!startTime || !endTime) {
+      setResourceModalStatus('Custom hours require start and end time', true);
+      return;
+    }
+    if (startTime >= endTime) {
+      setResourceModalStatus('Exception start time must be before end time', true);
+      return;
+    }
+  }
+
+  const existingIndex = state.resourceExceptionsDraft.findIndex((item) => item.date === date);
+  const existing = existingIndex >= 0 ? state.resourceExceptionsDraft[existingIndex] : null;
+  const draft = {
+    id: existing?.id || '',
+    date,
+    isOff,
+    startTime: isOff ? '' : startTime,
+    endTime: isOff ? '' : endTime,
+    note
+  };
+
+  if (existingIndex >= 0) {
+    state.resourceExceptionsDraft[existingIndex] = draft;
+  } else {
+    state.resourceExceptionsDraft.push(draft);
+  }
+  sortResourceExceptionsDraft();
+  renderResourceExceptionsList();
+  clearExceptionEditorInputs();
+  setResourceModalStatus('');
+}
+
+async function loadResourceAvailabilityForModal(resourceId) {
+  resetResourceAvailabilityDraft();
+  if (!resourceId) return;
+
+  try {
+    const [rulesRes, exceptionsRes] = await Promise.all([
+      window.api.availability.listRules(resourceId),
+      window.api.availability.listExceptions(resourceId, '', '')
+    ]);
+
+    if (!rulesRes?.ok) {
+      setResourceModalStatus(rulesRes?.error || 'Failed to load working hours', true);
+      return;
+    }
+    if (!exceptionsRes?.ok) {
+      setResourceModalStatus(exceptionsRes?.error || 'Failed to load exceptions', true);
+      return;
+    }
+
+    const nextRules = createDefaultResourceRulesDraft();
+    const incomingRules = Array.isArray(rulesRes.data) ? rulesRes.data : [];
+    incomingRules.forEach((rule) => {
+      const mapped = mapRuleToDraft(rule);
+      const weekday = Number.parseInt(mapped.weekday, 10);
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return;
+      nextRules[weekday] = {
+        ...nextRules[weekday],
+        ...mapped,
+        weekday
+      };
+    });
+    state.resourceRulesDraft = nextRules;
+    state.resourceExceptionsDraft = Array.isArray(exceptionsRes.data)
+      ? exceptionsRes.data.map(mapExceptionToDraft).filter((item) => item.date)
+      : [];
+    sortResourceExceptionsDraft();
+    state.resourceExceptionDeletedIds = [];
+    renderResourceRulesGrid();
+    renderResourceExceptionsList();
+  } catch (err) {
+    console.error(err);
+    setResourceModalStatus(err.message || 'Failed to load availability', true);
+  }
+}
+
+async function saveResourceAvailability(resourceId) {
+  if (!resourceId) throw new Error('resourceId is required for availability');
+
+  for (const rule of state.resourceRulesDraft) {
+    const startTime = normalizeTimeInputValue(rule.startTime);
+    const endTime = normalizeTimeInputValue(rule.endTime);
+    const breakStartTime = normalizeTimeInputValue(rule.breakStartTime);
+    const breakEndTime = normalizeTimeInputValue(rule.breakEndTime);
+
+    if (!startTime && !endTime) {
+      if (rule.id) {
+        const deleteRes = await window.api.availability.deleteRule(rule.id);
+        if (!deleteRes?.ok) throw new Error(deleteRes?.error || `Failed to delete rule for ${WEEKDAY_LABELS[rule.weekday]}`);
+      }
+      continue;
+    }
+    if (!startTime || !endTime) {
+      throw new Error(`${WEEKDAY_LABELS[rule.weekday]} requires both start and end time`);
+    }
+    if (startTime >= endTime) {
+      throw new Error(`${WEEKDAY_LABELS[rule.weekday]} start time must be before end time`);
+    }
+    if ((breakStartTime && !breakEndTime) || (!breakStartTime && breakEndTime)) {
+      throw new Error(`${WEEKDAY_LABELS[rule.weekday]} break requires start and end time`);
+    }
+    if (breakStartTime && breakEndTime) {
+      if (breakStartTime >= breakEndTime) {
+        throw new Error(`${WEEKDAY_LABELS[rule.weekday]} break start must be before break end`);
+      }
+      if (breakStartTime <= startTime || breakEndTime >= endTime) {
+        throw new Error(`${WEEKDAY_LABELS[rule.weekday]} break must be inside working hours`);
+      }
+    }
+
+    const payload = {
+      id: rule.id || undefined,
+      resourceId,
+      weekday: rule.weekday,
+      startTime,
+      endTime,
+      breakStartTime: breakStartTime || undefined,
+      breakEndTime: breakEndTime || undefined
+    };
+    const saveRes = await window.api.availability.saveRule(payload);
+    if (!saveRes?.ok) throw new Error(saveRes?.error || `Failed to save rule for ${WEEKDAY_LABELS[rule.weekday]}`);
+    if (saveRes?.data?.id) {
+      rule.id = String(saveRes.data.id);
+    }
+  }
+
+  for (const exceptionId of state.resourceExceptionDeletedIds) {
+    const deleteRes = await window.api.availability.deleteException(exceptionId);
+    if (!deleteRes?.ok) throw new Error(deleteRes?.error || 'Failed to delete exception');
+  }
+  state.resourceExceptionDeletedIds = [];
+
+  for (const ex of state.resourceExceptionsDraft) {
+    const date = normalizeDateValue(ex.date);
+    if (!date) throw new Error('Exception date is required');
+    const isOff = Number(ex.isOff) ? 1 : 0;
+    const startTime = isOff ? '' : normalizeTimeInputValue(ex.startTime);
+    const endTime = isOff ? '' : normalizeTimeInputValue(ex.endTime);
+    if (!isOff) {
+      if (!startTime || !endTime) throw new Error(`Exception ${date} requires start and end time`);
+      if (startTime >= endTime) throw new Error(`Exception ${date} start time must be before end time`);
+    }
+
+    const payload = {
+      id: ex.id || undefined,
+      resourceId,
+      date,
+      isOff,
+      startTime: isOff ? undefined : startTime,
+      endTime: isOff ? undefined : endTime,
+      note: String(ex.note || '').trim()
+    };
+    const saveRes = await window.api.availability.saveException(payload);
+    if (!saveRes?.ok) throw new Error(saveRes?.error || `Failed to save exception for ${date}`);
+    if (saveRes?.data?.id) {
+      ex.id = String(saveRes.data.id);
+    }
+  }
+}
+
+function renderServicesTable() {
+  if (!servicesTableBody) return;
+  servicesTableBody.innerHTML = '';
+
+  if (!state.services.length) {
+    const emptyRow = document.createElement('tr');
+    emptyRow.innerHTML = '<td colspan="5" class="empty-state">No services found.</td>';
+    servicesTableBody.appendChild(emptyRow);
+    return;
+  }
+
+  state.services.forEach((service) => {
+    const row = document.createElement('tr');
+    const activeBadge = Number(service.isActive) ? '<span class="badge valid">Yes</span>' : '<span class="badge not_found">No</span>';
+    row.innerHTML = `
+      <td>${escapeHtml(service.name || '')}</td>
+      <td>${escapeHtml(String(service.durationMin || 30))} min</td>
+      <td>${escapeHtml(formatMoneyFromCents(service.priceCents, service.currency || 'EUR'))}</td>
+      <td>${activeBadge}</td>
+      <td>
+        <div class="row-actions">
+          <button type="button" data-action="edit" data-id="${escapeHtml(service.id || '')}">Edit</button>
+          <button type="button" class="danger" data-action="delete" data-id="${escapeHtml(service.id || '')}">Delete</button>
+        </div>
+      </td>
+    `;
+
+    row.querySelector('[data-action="edit"]')?.addEventListener('click', () => openServiceModal(service));
+    row.querySelector('[data-action="delete"]')?.addEventListener('click', () => deleteService(service.id));
+    servicesTableBody.appendChild(row);
+  });
+}
+
+async function loadServices() {
+  try {
+    const res = await window.api.services.list(200, state.servicesSearch || '');
+    if (!res?.ok) {
+      setServicesStatus(res?.error || 'Failed to load services', true);
+      return;
+    }
+    state.services = Array.isArray(res.data) ? res.data : [];
+    renderServicesTable();
+  } catch (err) {
+    console.error(err);
+    setServicesStatus(err.message || 'Failed to load services', true);
+  }
+}
+
+function openServiceModal(service = null) {
+  state.editingServiceId = service?.id || null;
+  if (serviceModalTitle) {
+    serviceModalTitle.textContent = state.editingServiceId ? 'Edit Service' : 'Add Service';
+  }
+  if (serviceNameInput) serviceNameInput.value = service?.name || '';
+  if (serviceDurationInput) serviceDurationInput.value = String(service?.durationMin || 30);
+  if (servicePriceInput) servicePriceInput.value = formatCentsForInput(service?.priceCents || 0);
+  if (serviceCurrencyInput) serviceCurrencyInput.value = 'EUR';
+  if (serviceActiveInput) serviceActiveInput.checked = Number(service?.isActive ?? 1) !== 0;
+  setServiceModalStatus('');
+  serviceModal?.classList.add('open');
+  serviceModal?.setAttribute('aria-hidden', 'false');
+  serviceNameInput?.focus();
+}
+
+function closeServiceModal() {
+  state.editingServiceId = null;
+  serviceModal?.classList.remove('open');
+  serviceModal?.setAttribute('aria-hidden', 'true');
+  setServiceModalStatus('');
+}
+
+async function saveServiceFromModal() {
+  const name = (serviceNameInput?.value || '').trim();
+  if (!name) {
+    setServiceModalStatus('Name is required', true);
+    return;
+  }
+  const priceCents = parseEuroInputToCents(servicePriceInput?.value);
+  if (priceCents === null) {
+    setServiceModalStatus('Price must be a valid amount like 12.50 or 12,50', true);
+    return;
+  }
+  const isEdit = Boolean(state.editingServiceId);
+  const payload = {
+    id: state.editingServiceId || undefined,
+    name,
+    durationMin: Math.max(1, Number.parseInt(serviceDurationInput?.value || '30', 10) || 30),
+    priceCents,
+    currency: 'EUR',
+    isActive: serviceActiveInput?.checked ? 1 : 0
+  };
+
+  try {
+    const res = await window.api.services.save(payload);
+    if (!res?.ok) {
+      setServiceModalStatus(res?.error || 'Failed to save service', true);
+      return;
+    }
+    closeServiceModal();
+    await loadServices();
+    await refreshSyncIndicator();
+    setServicesStatus(isEdit ? 'Service updated' : 'Service created');
+  } catch (err) {
+    console.error(err);
+    setServiceModalStatus(err.message || 'Failed to save service', true);
+  }
+}
+
+async function deleteService(id) {
+  if (!id) return;
+  const confirmed = window.confirm('Delete this service?');
+  if (!confirmed) return;
+
+  try {
+    const res = await window.api.services.delete(id);
+    if (!res?.ok) {
+      setServicesStatus(res?.error || 'Failed to delete service', true);
+      return;
+    }
+    if (!res?.data?.deleted) {
+      setServicesStatus('Service not found', true);
+      return;
+    }
+    await loadServices();
+    await refreshSyncIndicator();
+    setServicesStatus('Service deleted');
+  } catch (err) {
+    console.error(err);
+    setServicesStatus(err.message || 'Failed to delete service', true);
+  }
+}
+
+function renderResourcesTable() {
+  if (!resourcesTableBody) return;
+  resourcesTableBody.innerHTML = '';
+
+  if (!state.resources.length) {
+    const emptyRow = document.createElement('tr');
+    emptyRow.innerHTML = '<td colspan="4" class="empty-state">No resources found.</td>';
+    resourcesTableBody.appendChild(emptyRow);
+    return;
+  }
+
+  state.resources.forEach((resource) => {
+    const row = document.createElement('tr');
+    const activeBadge = Number(resource.isActive) ? '<span class="badge valid">Yes</span>' : '<span class="badge not_found">No</span>';
+    row.innerHTML = `
+      <td>${escapeHtml(resource.name || '')}</td>
+      <td>${escapeHtml(resource.type || 'employee')}</td>
+      <td>${activeBadge}</td>
+      <td>
+        <div class="row-actions">
+          <button type="button" data-action="edit" data-id="${escapeHtml(resource.id || '')}">Edit</button>
+          <button type="button" class="danger" data-action="delete" data-id="${escapeHtml(resource.id || '')}">Delete</button>
+        </div>
+      </td>
+    `;
+
+    row.querySelector('[data-action="edit"]')?.addEventListener('click', () => openResourceModal(resource));
+    row.querySelector('[data-action="delete"]')?.addEventListener('click', () => deleteResource(resource.id));
+    resourcesTableBody.appendChild(row);
+  });
+}
+
+async function loadResources() {
+  try {
+    const res = await window.api.resources.list(200, state.resourcesSearch || '');
+    if (!res?.ok) {
+      setResourcesStatus(res?.error || 'Failed to load resources', true);
+      return;
+    }
+    state.resources = Array.isArray(res.data) ? res.data : [];
+    renderResourcesTable();
+  } catch (err) {
+    console.error(err);
+    setResourcesStatus(err.message || 'Failed to load resources', true);
+  }
+}
+
+function renderResourceServicesChecklist() {
+  if (!resourceServicesList) return;
+  resourceServicesList.innerHTML = '';
+
+  if (!state.resourceServiceOptions.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No active services available.';
+    resourceServicesList.appendChild(empty);
+    return;
+  }
+
+  state.resourceServiceOptions.forEach((service) => {
+    const serviceId = String(service.id || '').trim();
+    if (!serviceId) return;
+    const item = document.createElement('label');
+    item.className = 'checklist-item';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = serviceId;
+    input.checked = state.resourceServiceIds.includes(serviceId);
+    const text = document.createElement('span');
+    const duration = Number.parseInt(service.durationMin, 10) || 30;
+    text.textContent = `${service.name} (${duration} min)`;
+    item.appendChild(input);
+    item.appendChild(text);
+    resourceServicesList.appendChild(item);
+  });
+}
+
+async function loadResourceServicesForModal(resourceId) {
+  try {
+    const [servicesRes, selectedRes] = await Promise.all([
+      window.api.services.list(500, ''),
+      resourceId ? window.api.resources.getServices(resourceId) : Promise.resolve({ ok: true, data: [] })
+    ]);
+
+    if (!servicesRes?.ok) {
+      setResourceModalStatus(servicesRes?.error || 'Failed to load services', true);
+      state.resourceServiceOptions = [];
+      state.resourceServiceIds = [];
+      renderResourceServicesChecklist();
+      return;
+    }
+    if (resourceId && !selectedRes?.ok) {
+      setResourceModalStatus(selectedRes?.error || 'Failed to load allowed services', true);
+      state.resourceServiceOptions = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+      state.resourceServiceIds = [];
+      renderResourceServicesChecklist();
+      return;
+    }
+
+    state.resourceServiceOptions = Array.isArray(servicesRes.data) ? servicesRes.data : [];
+    state.resourceServiceIds = Array.isArray(selectedRes?.data)
+      ? selectedRes.data.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    renderResourceServicesChecklist();
+  } catch (err) {
+    console.error(err);
+    setResourceModalStatus(err.message || 'Failed to load allowed services', true);
+    state.resourceServiceOptions = [];
+    state.resourceServiceIds = [];
+    renderResourceServicesChecklist();
+  }
+}
+
+function getSelectedResourceServiceIds() {
+  if (!resourceServicesList) return [];
+  return Array.from(resourceServicesList.querySelectorAll('input[type="checkbox"]:checked'))
+    .map((input) => String(input.value || '').trim())
+    .filter(Boolean);
+}
+
+async function openResourceModal(resource = null) {
+  state.editingResourceId = resource?.id || null;
+  if (resourceModalTitle) {
+    resourceModalTitle.textContent = state.editingResourceId ? 'Edit Resource' : 'Add Resource';
+  }
+  if (resourceNameInput) resourceNameInput.value = resource?.name || '';
+  if (resourceTypeInput) resourceTypeInput.value = resource?.type || 'employee';
+  if (resourceActiveInput) resourceActiveInput.checked = Number(resource?.isActive ?? 1) !== 0;
+  setResourceModalStatus('');
+  resourceModal?.classList.add('open');
+  resourceModal?.setAttribute('aria-hidden', 'false');
+  await Promise.all([loadResourceServicesForModal(state.editingResourceId), loadResourceAvailabilityForModal(state.editingResourceId)]);
+  resourceNameInput?.focus();
+}
+
+function closeResourceModal() {
+  state.editingResourceId = null;
+  state.resourceServiceOptions = [];
+  state.resourceServiceIds = [];
+  state.resourceRulesDraft = [];
+  state.resourceExceptionsDraft = [];
+  state.resourceExceptionDeletedIds = [];
+  if (resourceServicesList) {
+    resourceServicesList.innerHTML = '';
+  }
+  if (resourceRulesGrid) {
+    resourceRulesGrid.innerHTML = '';
+  }
+  if (resourceExceptionsList) {
+    resourceExceptionsList.innerHTML = '';
+  }
+  clearExceptionEditorInputs();
+  resourceModal?.classList.remove('open');
+  resourceModal?.setAttribute('aria-hidden', 'true');
+  setResourceModalStatus('');
+}
+
+async function saveResourceFromModal() {
+  const name = (resourceNameInput?.value || '').trim();
+  if (!name) {
+    setResourceModalStatus('Name is required', true);
+    return;
+  }
+
+  const isEdit = Boolean(state.editingResourceId);
+  const payload = {
+    id: state.editingResourceId || undefined,
+    name,
+    type: (resourceTypeInput?.value || 'employee').trim() || 'employee',
+    isActive: resourceActiveInput?.checked ? 1 : 0
+  };
+  const selectedServiceIds = getSelectedResourceServiceIds();
+
+  try {
+    const res = await window.api.resources.save(payload);
+    if (!res?.ok) {
+      setResourceModalStatus(res?.error || 'Failed to save resource', true);
+      return;
+    }
+    const resourceId = res?.data?.id || state.editingResourceId;
+    if (!resourceId) {
+      setResourceModalStatus('Saved resource is missing id', true);
+      return;
+    }
+
+    const mapRes = await window.api.resources.setServices(resourceId, selectedServiceIds);
+    if (!mapRes?.ok) {
+      state.editingResourceId = resourceId;
+      setResourceModalStatus(mapRes?.error || 'Resource saved, but failed to update allowed services', true);
+      return;
+    }
+
+    await saveResourceAvailability(resourceId);
+
+    closeResourceModal();
+    await loadResources();
+    await refreshSyncIndicator();
+    setResourcesStatus(isEdit ? 'Resource updated' : 'Resource created');
+  } catch (err) {
+    console.error(err);
+    setResourceModalStatus(err.message || 'Failed to save resource', true);
+  }
+}
+
+async function deleteResource(id) {
+  if (!id) return;
+  const confirmed = window.confirm('Delete this resource?');
+  if (!confirmed) return;
+
+  try {
+    const res = await window.api.resources.delete(id);
+    if (!res?.ok) {
+      setResourcesStatus(res?.error || 'Failed to delete resource', true);
+      return;
+    }
+    if (!res?.data?.deleted) {
+      setResourcesStatus('Resource not found', true);
+      return;
+    }
+    await loadResources();
+    await refreshSyncIndicator();
+    setResourcesStatus('Resource deleted');
+  } catch (err) {
+    console.error(err);
+    setResourcesStatus(err.message || 'Failed to delete resource', true);
+  }
 }
 
 function renderTemplateCards() {
@@ -390,6 +2414,7 @@ async function changeTemplate(templateId) {
   renderTemplateCards();
   renderDynamicForm();
   renderPreview();
+  updateVoucherActionButtonsState();
 }
 
 async function fetchHelp() {
@@ -634,6 +2659,9 @@ function updateVoucherData(key, value) {
     next.VoucherCode = serial;
     next.Code = serial;
   }
+  if (key === 'phone') {
+    state.currentVoucher.phone = String(value || '').trim();
+  }
   state.currentVoucher.data = next;
 }
 
@@ -648,6 +2676,9 @@ function applyFormValues() {
   if (inputVoucherCode) {
     inputVoucherCode.value = state.currentVoucher.data?.VoucherCode || state.currentVoucher.data?.Code || '';
   }
+  if (inputRecipientPhone) {
+    inputRecipientPhone.value = (state.currentVoucher.data?.phone || state.currentVoucher.phone || '').trim();
+  }
   if (inputInstagram) inputInstagram.value = state.currentVoucher.data?.InstagramLink || '';
   if (inputFacebook) inputFacebook.value = state.currentVoucher.data?.FacebookLink || '';
   const values = state.currentVoucher.data || {};
@@ -657,6 +2688,7 @@ function applyFormValues() {
       input.value = input.type === 'date' ? normalizeDateValue(values[key]) : values[key] || '';
     }
   });
+  updateVoucherActionButtonsState();
   applyBuilderScale();
 }
 
@@ -701,9 +2733,11 @@ function renderSavedList() {
     item.dataset.id = v.id;
     const title = v.data?.RecipientName || v.data?.Name || v.id;
     const code = v.data?.VoucherCode || v.data?.Code || v.id;
+    const phone = (v.phone || v.data?.phone || '').trim();
     item.innerHTML = `
       <div class="saved-title">${escapeHtml(title)}</div>
       <div class="saved-meta">${escapeHtml(code || '')}</div>
+      ${phone ? `<div class="saved-meta">${escapeHtml(phone)}</div>` : ''}
       <div class="saved-meta">${escapeHtml(v.templateId || '')}</div>
     `;
     item.addEventListener('click', () => loadVoucher(v.id));
@@ -718,10 +2752,12 @@ async function loadVoucher(id) {
     return;
   }
   state.selectedVoucherId = id;
+  const phone = (res.item?.phone || res.item?.data?.phone || '').trim();
   state.currentVoucher = {
     id: res.item.id,
     templateId: res.item.templateId,
-    data: res.item.data || {},
+    phone,
+    data: { ...(res.item.data || {}), phone },
     images: res.item.images || {}
   };
   state.imageData = res.imagesData || {};
@@ -742,9 +2778,11 @@ function newVoucher() {
   state.currentVoucher = {
     id: newId,
     templateId: state.currentTemplateId || (state.templates[0]?.id || null),
+    phone: '',
     data: {
       VoucherCode: codeValue,
       Code: codeValue,
+      phone: '',
       IssueDate: new Date().toISOString().slice(0, 10),
       InstagramLink: 'https://www.instagram.com/actiondays.kalofer?igsh=MWxtYWJzMzg4c2Iy',
       FacebookLink: 'https://www.facebook.com/share/1AFAZSUgzW/'
@@ -774,6 +2812,9 @@ async function saveCurrentVoucher(asCopy = false) {
     templateId: state.currentTemplateId
   };
   if (!payload.data) payload.data = {};
+  const trimmedPhone = String(payload.data.phone ?? payload.phone ?? '').trim();
+  payload.phone = trimmedPhone;
+  payload.data.phone = trimmedPhone;
   const serial = sanitizeSerial(payload.data.VoucherCode || payload.data.Code);
   payload.data.VoucherCode = serial;
   payload.data.Code = serial;
@@ -791,10 +2832,12 @@ async function saveCurrentVoucher(asCopy = false) {
   }
   const res = await window.api.vouchers.save(payload);
   if (res?.ok) {
+    const phone = String(res.item?.phone ?? res.item?.data?.phone ?? '').trim();
     state.currentVoucher = {
       id: res.item.id,
       templateId: res.item.templateId,
-      data: res.item.data || {},
+      phone,
+      data: { ...(res.item.data || {}), phone },
       images: res.item.images || {}
     };
     state.imageData = res.imagesData || {};
@@ -806,6 +2849,7 @@ async function saveCurrentVoucher(asCopy = false) {
     setStatus('Voucher saved');
     logTest('save_voucher', payload);
     await loadVoucherStatusList();
+    await refreshSyncIndicator();
   } else {
     setStatus(res?.error || 'Save failed', true);
   }
@@ -815,10 +2859,12 @@ async function saveCopyCurrent() {
   if (state.currentVoucher.id) {
     const res = await window.api.vouchers.duplicate(state.currentVoucher.id);
     if (res?.ok) {
+      const phone = String(res.item?.phone ?? res.item?.data?.phone ?? '').trim();
       state.currentVoucher = {
         id: res.item.id,
         templateId: res.item.templateId,
-        data: res.item.data || {},
+        phone,
+        data: { ...(res.item.data || {}), phone },
         images: res.item.images || {}
       };
       state.imageData = res.imagesData || {};
@@ -830,6 +2876,7 @@ async function saveCopyCurrent() {
       setStatus('Saved as copy');
       logTest('save_copy', res.item);
       await loadVoucherStatusList();
+      await refreshSyncIndicator();
       return;
     }
   }
@@ -848,6 +2895,7 @@ async function deleteCurrentVoucher() {
     setStatus('Voucher deleted');
     logTest('delete_voucher', state.selectedVoucherId);
     await loadVoucherStatusList();
+    await refreshSyncIndicator();
   } else {
     setStatus(res?.error || 'Delete failed', true);
   }
@@ -866,6 +2914,7 @@ async function clearAllVouchers() {
     renderPreview();
     setStatus('All vouchers cleared');
     await loadVoucherStatusList();
+    await refreshSyncIndicator();
   } else {
     setStatus(res?.error || 'Clear failed', true);
   }
@@ -874,10 +2923,12 @@ async function clearAllVouchers() {
 async function handleUploadImage(imageKey) {
   const res = await window.api.vouchers.pickImage(state.currentVoucher.id, imageKey);
   if (res?.ok && res.voucher) {
+    const phone = String(res.voucher?.phone ?? res.voucher?.data?.phone ?? state.currentVoucher.phone ?? '').trim();
     state.currentVoucher = {
       id: res.voucher.id,
       templateId: res.voucher.templateId,
-      data: res.voucher.data || state.currentVoucher.data,
+      phone,
+      data: { ...(res.voucher.data || state.currentVoucher.data || {}), phone },
       images: res.voucher.images || {}
     };
     state.imageData = res.imagesData || state.imageData;
@@ -990,17 +3041,28 @@ async function renderPreview() {
   }
 
 async function handleExport(format = 'pdf') {
-  if (!state.currentTemplateId) return;
-  const data = { ...(state.currentVoucher.data || {}) };
-  const res =
-    format === 'png'
-      ? await window.voucherAPI.exportPng(data, state.currentTemplateId, state.currentVoucher.images || {})
-      : await window.voucherAPI.exportPdf(data, state.currentTemplateId, state.currentVoucher.images || {});
-  if (res?.ok) {
-    setStatus(`Exported to ${res.outPath || 'Downloads'}`);
-    logTest(`export_${format}`, res.outPath || '');
-  } else {
-    setStatus(res?.error || 'Export failed', true);
+  if (!state.currentVoucher?.id) {
+    setStatus('Select or create a voucher first', true);
+    return;
+  }
+  if (!state.currentTemplateId) {
+    setStatus('Select a template first', true);
+    return;
+  }
+  try {
+    const data = { ...(state.currentVoucher.data || {}) };
+    const res =
+      format === 'png'
+        ? await window.voucherAPI.exportPng(data, state.currentTemplateId, state.currentVoucher.images || {})
+        : await window.voucherAPI.exportPdf(data, state.currentTemplateId, state.currentVoucher.images || {});
+    if (res?.ok) {
+      setStatus(`Exported to ${res.outPath || 'Downloads'}`);
+      logTest(`export_${format}`, res.outPath || '');
+    } else {
+      setStatus(res?.error || 'Export failed', true);
+    }
+  } catch (err) {
+    setStatus(err?.message || 'Export failed', true);
   }
 }
 
@@ -1010,18 +3072,30 @@ function switchView(viewName) {
 }
 
 function switchMainSection(target) {
+  sectionVouchers.style.display = target === 'vouchers' ? 'block' : 'none';
+  sectionServices.style.display = target === 'services' ? 'block' : 'none';
+  sectionResources.style.display = target === 'resources' ? 'block' : 'none';
+  sectionSchedule.style.display = target === 'schedule' ? 'block' : 'none';
+  sectionBuilder.style.display = target === 'builder' ? 'block' : 'none';
+
+  navVouchers.classList.toggle('active', target === 'vouchers');
+  navServices.classList.toggle('active', target === 'services');
+  navResources.classList.toggle('active', target === 'resources');
+  navSchedule.classList.toggle('active', target === 'schedule');
+  navBuilder.classList.toggle('active', target === 'builder');
+
   if (target === 'builder') {
-    sectionVouchers.style.display = 'none';
-    sectionBuilder.style.display = 'block';
-    navVouchers.classList.remove('active');
-    navBuilder.classList.add('active');
     initBuilder();
     updateBuilderResponsive();
-  } else {
-    sectionVouchers.style.display = 'block';
-    sectionBuilder.style.display = 'none';
-    navVouchers.classList.add('active');
-    navBuilder.classList.remove('active');
+  }
+  if (target === 'services') {
+    loadServices();
+  }
+  if (target === 'resources') {
+    loadResources();
+  }
+  if (target === 'schedule') {
+    initScheduleSection();
   }
 }
 function renderValidateDetails(voucher, status) {
@@ -1042,6 +3116,10 @@ function renderValidateDetails(voucher, status) {
     <div class="validate-row">
       <span class="label">Name</span>
       <span>${escapeHtml(voucher.name || '')}</span>
+    </div>
+    <div class="validate-row">
+      <span class="label">Phone</span>
+      <span>${escapeHtml(voucher.phone || '')}</span>
     </div>
     <div class="validate-row">
       <span class="label">Value</span>
@@ -1200,6 +3278,7 @@ async function loadVoucherStatusList() {
       if (!seenCodes.has(code)) {
         rows.push({
           name: v.data?.RecipientName || v.data?.Name || '',
+          phone: v.phone || v.data?.phone || '',
           code,
           templateId: v.templateId,
           expires: v.data?.Validity || '',
@@ -1791,6 +3870,7 @@ async function initBuilder() {
 }
 
 async function init() {
+  updateVoucherActionButtonsState();
   await loadTheme();
   await loadValueOptions();
   fetchHelp();
@@ -1804,7 +3884,7 @@ async function init() {
   }
   const versionText = state.version || '1.0.0';
   if (helpVersion) {
-    helpVersion.textContent = `LN Voucher - Version ${versionText}${state.testMode ? ' - Test version - feedback welcome' : ''}`;
+    helpVersion.textContent = `LN software - Version ${versionText}${state.testMode ? ' - Test version - feedback welcome' : ''}`;
   }
   updateBadges();
   previewFrame.src = '../templates/_base/template.html';
@@ -1817,7 +3897,16 @@ async function init() {
   await changeTemplate(state.currentTemplateId);
   await loadSavedList();
   await loadVoucherStatusList();
+  await loadServices();
+  await loadResources();
+  await refreshSyncIndicator();
   newVoucher();
+  if (state.syncTimerId) {
+    clearInterval(state.syncTimerId);
+  }
+  state.syncTimerId = window.setInterval(() => {
+    refreshSyncIndicator();
+  }, 5000);
 
   tabButtons.forEach((btn) =>
     btn.addEventListener('click', () => {
@@ -1825,8 +3914,13 @@ async function init() {
     })
   );
   navVouchers.addEventListener('click', () => switchMainSection('vouchers'));
+  navServices.addEventListener('click', () => switchMainSection('services'));
+  navResources.addEventListener('click', () => switchMainSection('resources'));
+  navSchedule.addEventListener('click', () => switchMainSection('schedule'));
   navBuilder.addEventListener('click', () => switchMainSection('builder'));
   themeToggle?.addEventListener('click', toggleTheme);
+  btnSyncNow?.addEventListener('click', runSyncNow);
+  syncIndicator?.addEventListener('click', runSyncNow);
   helpBtn?.addEventListener('click', openHelp);
   helpClose?.addEventListener('click', closeHelp);
   helpSearch?.addEventListener('input', (e) => {
@@ -1853,6 +3947,11 @@ async function init() {
       setStatus(res?.error || 'Export failed', true);
     }
   });
+  btnImportCsv?.addEventListener('click', handleImportCsv);
+  importCsvConfirm?.addEventListener('click', confirmImportCsv);
+  importCsvCancel?.addEventListener('click', closeImportCsvModal);
+  importCsvClose?.addEventListener('click', closeImportCsvModal);
+  importCsvModalBackdrop?.addEventListener('click', closeImportCsvModal);
   btnSaveVoucher?.addEventListener('click', () => saveCurrentVoucher(false));
   btnSaveCopy?.addEventListener('click', () => saveCopyCurrent());
   btnCreateTemplate?.addEventListener('click', async () => {
@@ -1892,6 +3991,14 @@ async function init() {
     e.target.classList.remove('error');
     renderPreview();
   });
+  inputRecipientPhone?.addEventListener('input', (e) => {
+    updateVoucherData('phone', e.target.value);
+  });
+  inputRecipientPhone?.addEventListener('blur', (e) => {
+    const trimmed = String(e.target.value || '').trim();
+    e.target.value = trimmed;
+    updateVoucherData('phone', trimmed);
+  });
   inputInstagram?.addEventListener('input', (e) => {
     updateVoucherData('InstagramLink', e.target.value);
     renderPreview();
@@ -1907,6 +4014,85 @@ async function init() {
     renderVoucherStatusList();
   });
   refreshVoucherList?.addEventListener('click', loadVoucherStatusList);
+  servicesSearch?.addEventListener('input', async (e) => {
+    state.servicesSearch = e.target.value || '';
+    await loadServices();
+  });
+  resourcesSearch?.addEventListener('input', async (e) => {
+    state.resourcesSearch = e.target.value || '';
+    await loadResources();
+  });
+  scheduleDateInput?.addEventListener('change', async (e) => {
+    state.scheduleDate = normalizeDateValue(e.target.value) || todayDateText();
+    await loadScheduleBookings();
+  });
+  scheduleServiceSelect?.addEventListener('change', async (e) => {
+    state.scheduleServiceId = e.target.value || '';
+    await loadScheduleBookings();
+  });
+  scheduleResourceSelect?.addEventListener('change', async (e) => {
+    state.scheduleResourceId = e.target.value || '';
+    await loadScheduleBookings();
+  });
+  scheduleRefreshBtn?.addEventListener('click', async () => {
+    await initScheduleSection();
+  });
+  btnServiceAdd?.addEventListener('click', () => openServiceModal());
+  btnResourceAdd?.addEventListener('click', () => openResourceModal());
+
+  serviceModalSave?.addEventListener('click', saveServiceFromModal);
+  serviceModalCancel?.addEventListener('click', closeServiceModal);
+  serviceModalClose?.addEventListener('click', closeServiceModal);
+  serviceModalBackdrop?.addEventListener('click', closeServiceModal);
+
+  resourceModalSave?.addEventListener('click', saveResourceFromModal);
+  resourceModalCancel?.addEventListener('click', closeResourceModal);
+  resourceModalClose?.addEventListener('click', closeResourceModal);
+  resourceModalBackdrop?.addEventListener('click', closeResourceModal);
+  exceptionIsOffInput?.addEventListener('change', syncExceptionEditorInputs);
+  exceptionAddBtn?.addEventListener('click', addOrUpdateResourceExceptionFromEditor);
+
+  bookingModalSave?.addEventListener('click', saveBookingFromModal);
+  bookingModalCancel?.addEventListener('click', closeBookingModal);
+  bookingModalClose?.addEventListener('click', closeBookingModal);
+  bookingModalBackdrop?.addEventListener('click', closeBookingModal);
+  bookingModalCancelBooking?.addEventListener('click', cancelBookingFromModal);
+  bookingServiceSelect?.addEventListener('change', async () => {
+    const preferred = bookingStartSelect?.value || state.bookingSlotHintIso || '';
+    await refreshBookingStartSlots(preferred);
+  });
+  bookingResourceSelect?.addEventListener('change', async () => {
+    const preferred = bookingStartSelect?.value || state.bookingSlotHintIso || '';
+    await refreshBookingStartSlots(preferred);
+  });
+  bookingDateInput?.addEventListener('change', async () => {
+    const preferred = bookingStartSelect?.value || state.bookingSlotHintIso || '';
+    await refreshBookingStartSlots(preferred);
+  });
+  bookingStartSelect?.addEventListener('change', (e) => {
+    state.bookingSlotHintIso = e.target.value || '';
+  });
+  bookingVoucherValidateBtn?.addEventListener('click', async () => {
+    await validateVoucherForBookingModal();
+  });
+  bookingVoucherCodeInput?.addEventListener('input', (e) => {
+    const value = String(e.target.value || '').trim();
+    if (!value) {
+      resetBookingVoucherLink();
+      return;
+    }
+    if (value !== state.bookingVoucherCode) {
+      state.bookingVoucherId = '';
+      state.bookingVoucherCode = value;
+      state.bookingVoucherState = '';
+      setBookingVoucherStatus('');
+    }
+  });
+  bookingVoucherCodeInput?.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    await validateVoucherForBookingModal();
+  });
 
   tplSelect?.addEventListener('change', loadBuilderLayout);
   btnNewTemplate?.addEventListener('click', createBuilderTemplate);
@@ -1961,6 +4147,24 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
       e.preventDefault();
       handleExport('pdf');
+    }
+    if (e.key === 'Escape' && serviceModal?.classList.contains('open')) {
+      closeServiceModal();
+    }
+    if (e.key === 'Escape' && resourceModal?.classList.contains('open')) {
+      closeResourceModal();
+    }
+    if (e.key === 'Escape' && bookingModal?.classList.contains('open')) {
+      closeBookingModal();
+    }
+    if (e.key === 'Escape' && importCsvModal?.classList.contains('open')) {
+      closeImportCsvModal();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshSyncIndicator();
     }
   });
 

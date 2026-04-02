@@ -10,7 +10,7 @@
     "dist": "electron-builder --win"
   },
   "dependencies": {
-    "better-sqlite3": "^9.4.0",
+    "better-sqlite3": "^12.6.2",
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "com.voucher.maker",
-    "productName": "Voucher Maker",
+    "productName": "LN software",
     "directories": {
       "output": "dist"
     },

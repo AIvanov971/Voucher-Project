@@ -1,0 +1,101 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Book Appointment</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <h1>Book Appointment</h1>
+        <p>Choose service, resource, and time in a few taps.</p>
+      </header>
+
+      <section class="panel config-panel">
+        <label for="orgInput">Organization</label>
+        <input id="orgInput" type="text" placeholder="local" autocomplete="off" />
+      </section>
+
+      <nav class="steps" aria-label="Booking steps">
+        <button type="button" data-step="1" class="step active">1. Service</button>
+        <button type="button" data-step="2" class="step">2. Resource</button>
+        <button type="button" data-step="3" class="step">3. Time</button>
+        <button type="button" data-step="4" class="step">4. Customer</button>
+        <button type="button" data-step="5" class="step">5. Confirm</button>
+      </nav>
+
+      <section id="alert" class="alert" hidden></section>
+
+      <section id="step-1" class="panel step-panel">
+        <h2>Select Service</h2>
+        <div id="servicesList" class="choice-list"></div>
+      </section>
+
+      <section id="step-2" class="panel step-panel" hidden>
+        <h2>Select Resource</h2>
+        <div id="resourcesList" class="choice-list"></div>
+      </section>
+
+      <section id="step-3" class="panel step-panel" hidden>
+        <div class="row between">
+          <h2>Select Time</h2>
+          <button id="refreshSlotsBtn" type="button" class="ghost">Refresh</button>
+        </div>
+        <div class="date-range">
+          <label>
+            <span>From</span>
+            <input id="fromDateInput" type="date" />
+          </label>
+          <label>
+            <span>To</span>
+            <input id="toDateInput" type="date" />
+          </label>
+        </div>
+        <div id="slotsList" class="slot-list"></div>
+      </section>
+
+      <section id="step-4" class="panel step-panel" hidden>
+        <h2>Customer Details</h2>
+        <form id="customerForm" class="form-grid" novalidate>
+          <label>
+            <span>Name</span>
+            <input id="nameInput" type="text" required maxlength="120" />
+          </label>
+          <label>
+            <span>Phone</span>
+            <input id="phoneInput" type="tel" maxlength="60" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="emailInput" type="email" maxlength="120" />
+          </label>
+          <label>
+            <span>Voucher Code (optional)</span>
+            <input id="voucherInput" type="text" maxlength="64" />
+          </label>
+          <label>
+            <span>Note (optional)</span>
+            <textarea id="noteInput" rows="3" maxlength="500"></textarea>
+          </label>
+          <button id="toConfirmBtn" type="submit">Continue</button>
+        </form>
+      </section>
+
+      <section id="step-5" class="panel step-panel" hidden>
+        <h2>Confirm Booking</h2>
+        <div id="summary" class="summary"></div>
+        <button id="confirmBtn" type="button" class="primary">Confirm Booking</button>
+        <div id="result" class="result" hidden>
+          <h3>Booking Confirmed</h3>
+          <p id="bookingRefText"></p>
+          <canvas id="qrCanvas" width="220" height="220" aria-label="Booking QR"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

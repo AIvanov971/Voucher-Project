@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voucher Maker</title>
+    <title>LN software</title>
     <link rel="stylesheet" href="styles.css" />
     <script defer src="renderer.js"></script>
   </head>
@@ -14,11 +14,14 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="app-icon">LN</div>
-        <div class="app-title">LN Voucher</div>
+        <div class="app-title">LN software</div>
         <div id="testBadge" class="badge test" hidden>TEST MODE</div>
       </div>
       <div class="topbar-center topbar-tabs">
         <button id="navVouchers" class="nav-btn active">Vouchers</button>
+        <button id="navServices" class="nav-btn">Services</button>
+        <button id="navResources" class="nav-btn">Resources</button>
+        <button id="navSchedule" class="nav-btn">Schedule</button>
         <button id="navBuilder" class="nav-btn">Template Builder</button>
       </div>
       <div class="topbar-right">
@@ -26,6 +29,8 @@
           <span id="versionTag" class="muted version-tag">v1.0.0-test</span>
           <span id="versionNote" class="version-note">Test version – feedback welcome</span>
         </div>
+        <div id="syncIndicator" class="badge sync">Sync: ...</div>
+        <button id="btnSyncNow" class="ghost-btn" aria-label="Run sync">Sync</button>
         <button id="themeToggle" class="ghost-btn" aria-label="Toggle theme">Light</button>
         <button id="helpBtn" class="ghost-btn" aria-label="Help">Help</button>
       </div>
@@ -34,7 +39,7 @@
     <section id="view-vouchers">
       <header class="app-header">
         <div>
-          <h1>Voucher Maker</h1>
+          <h1>LN software</h1>
           <p>Create, save, and export vouchers with QR and images.</p>
         </div>
       </header>
@@ -59,6 +64,7 @@
               <button id="btnDeleteVoucher" type="button" class="danger">Delete</button>
               <button id="btnClearVouchers" type="button" class="danger">Clear All</button>
               <button id="btnExportCsv" type="button">Export CSV</button>
+              <button id="btnImportCsv" type="button">Import CSV</button>
             </div>
           </aside>
 
@@ -90,6 +96,10 @@
                   <input type="text" name="VoucherCode" id="inputVoucherCode" required />
                   <small class="helper" data-helper-for="VoucherCode"></small>
                 </label>
+                <label>
+                  <span>Телефон на получателя</span>
+                  <input type="text" name="phone" id="inputRecipientPhone" />
+                </label>
                 <div id="dynamicFields" class="dynamic-fields"></div>
               </div>
               <div class="form-section">
@@ -108,19 +118,11 @@
                 <div id="imageFields" class="image-fields"></div>
               </div>
             </form>
-            <div class="form-actions sticky-actions">
-              <button id="btnSaveVoucher" type="button" class="primary">Save</button>
-              <button id="btnSaveCopy" type="button">Save As Copy</button>
-            </div>
           </section>
 
           <section class="panel preview-panel">
             <div class="preview-header">
               <h2>Live Preview</h2>
-            </div>
-            <div class="export-actions">
-              <button id="exportBtn" type="button" class="primary">Export PDF</button>
-              <button id="exportPngBtn" type="button">Export PNG</button>
             </div>
             <div class="preview-wrapper sticky">
               <iframe id="previewFrame" title="Voucher Preview"></iframe>
@@ -272,6 +274,262 @@
       </div>
     </section>
 
+    <section id="view-services" style="display: none;">
+      <header class="app-header">
+        <div>
+          <h1>Services</h1>
+          <p>Manage service catalog.</p>
+        </div>
+      </header>
+      <section class="panel manage-panel">
+        <div class="manage-toolbar">
+          <input id="servicesSearch" type="text" placeholder="Search services..." />
+          <button id="btnServiceAdd" type="button" class="primary">Add Service</button>
+        </div>
+        <div id="servicesStatus" class="status"></div>
+        <div class="table-wrap">
+          <table class="saved-table manage-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Duration</th>
+                <th>Price</th>
+                <th>Active</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="servicesTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="view-resources" style="display: none;">
+      <header class="app-header">
+        <div>
+          <h1>Resources</h1>
+          <p>Manage team resources.</p>
+        </div>
+      </header>
+      <section class="panel manage-panel">
+        <div class="manage-toolbar">
+          <input id="resourcesSearch" type="text" placeholder="Search resources..." />
+          <button id="btnResourceAdd" type="button" class="primary">Add Resource</button>
+        </div>
+        <div id="resourcesStatus" class="status"></div>
+        <div class="table-wrap">
+          <table class="saved-table manage-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Active</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resourcesTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="view-schedule" style="display: none;">
+      <header class="app-header">
+        <div>
+          <h1>Schedule</h1>
+          <p>Daily bookings and availability.</p>
+        </div>
+      </header>
+      <section class="panel schedule-panel">
+        <div class="schedule-layout">
+          <aside class="schedule-filters">
+            <label>
+              <span>Date</span>
+              <input id="scheduleDateInput" type="date" />
+            </label>
+            <label>
+              <span>Service</span>
+              <select id="scheduleServiceSelect"></select>
+            </label>
+            <label>
+              <span>Resource</span>
+              <select id="scheduleResourceSelect"></select>
+            </label>
+            <button id="scheduleRefreshBtn" type="button">Refresh</button>
+            <div id="scheduleStatus" class="status"></div>
+          </aside>
+          <div class="schedule-main">
+            <div class="schedule-main-header">
+              <h3 id="scheduleDayTitle">Day</h3>
+              <span>Click an empty slot to create booking.</span>
+            </div>
+            <div id="scheduleGrid" class="schedule-grid"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <div id="serviceModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="serviceModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:520px;">
+        <div class="modal-header">
+          <h3 id="serviceModalTitle">Add Service</h3>
+          <button id="serviceModalClose" class="ghost-btn" aria-label="Close service modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="serviceModalStatus" class="status"></div>
+          <label>
+            <span>Name</span>
+            <input id="serviceNameInput" type="text" placeholder="Service name" />
+          </label>
+          <label>
+            <span>Duration (min)</span>
+            <input id="serviceDurationInput" type="number" min="1" step="1" value="30" />
+          </label>
+          <label>
+            <span>Price (EUR)</span>
+            <input id="servicePriceInput" type="text" inputmode="decimal" placeholder="0.00" value="0.00" />
+          </label>
+          <label>
+            <span>Currency</span>
+            <input id="serviceCurrencyInput" type="text" maxlength="8" value="EUR" readonly />
+          </label>
+          <label class="inline-check">
+            <input id="serviceActiveInput" type="checkbox" checked />
+            <span>Active</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="serviceModalSave" type="button" class="primary">Save</button>
+          <button id="serviceModalCancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="resourceModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="resourceModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:520px;">
+        <div class="modal-header">
+          <h3 id="resourceModalTitle">Add Resource</h3>
+          <button id="resourceModalClose" class="ghost-btn" aria-label="Close resource modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="resourceModalStatus" class="status"></div>
+          <label>
+            <span>Name</span>
+            <input id="resourceNameInput" type="text" placeholder="Resource name" />
+          </label>
+          <label>
+            <span>Type</span>
+            <input id="resourceTypeInput" type="text" placeholder="employee" value="employee" />
+          </label>
+          <label class="inline-check">
+            <input id="resourceActiveInput" type="checkbox" checked />
+            <span>Active</span>
+          </label>
+          <div>
+            <span>Allowed services</span>
+            <div id="resourceServicesList" class="checklist"></div>
+          </div>
+          <div class="working-hours-block">
+            <span>Working hours</span>
+            <div id="resourceRulesGrid" class="rules-grid"></div>
+          </div>
+          <div class="exceptions-block">
+            <span>Exceptions</span>
+            <div class="exception-editor">
+              <input id="exceptionDateInput" type="date" />
+              <label class="inline-check">
+                <input id="exceptionIsOffInput" type="checkbox" checked />
+                <span>Off day</span>
+              </label>
+              <input id="exceptionStartInput" type="time" />
+              <input id="exceptionEndInput" type="time" />
+              <input id="exceptionNoteInput" type="text" placeholder="Note (optional)" />
+              <button id="exceptionAddBtn" type="button">Add</button>
+            </div>
+            <div id="resourceExceptionsList" class="exceptions-list"></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="resourceModalSave" type="button" class="primary">Save</button>
+          <button id="resourceModalCancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="bookingModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="bookingModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:560px;">
+        <div class="modal-header">
+          <h3 id="bookingModalTitle">Create Booking</h3>
+          <button id="bookingModalClose" class="ghost-btn" aria-label="Close booking modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="bookingModalStatus" class="status"></div>
+          <label>
+            <span>Service</span>
+            <select id="bookingServiceSelect"></select>
+          </label>
+          <label>
+            <span>Resource</span>
+            <select id="bookingResourceSelect"></select>
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="bookingDateInput" type="date" />
+          </label>
+          <label>
+            <span>Start time</span>
+            <select id="bookingStartSelect"></select>
+          </label>
+          <label>
+            <span>Customer</span>
+            <select id="bookingCustomerSelect"></select>
+          </label>
+          <label>
+            <span>New customer name (optional)</span>
+            <input id="bookingCustomerNameInput" type="text" placeholder="New customer name" />
+          </label>
+          <div class="booking-customer-extra">
+            <label>
+              <span>Phone (optional)</span>
+              <input id="bookingCustomerPhoneInput" type="text" placeholder="Phone" />
+            </label>
+            <label>
+              <span>Email (optional)</span>
+              <input id="bookingCustomerEmailInput" type="email" placeholder="Email" />
+            </label>
+          </div>
+          <div class="booking-voucher-row">
+            <label>
+              <span>Voucher code (optional)</span>
+              <input id="bookingVoucherCodeInput" type="text" placeholder="Enter voucher code" />
+            </label>
+            <button id="bookingVoucherValidateBtn" type="button">Validate</button>
+          </div>
+          <div id="bookingVoucherStatus" class="status"></div>
+          <label>
+            <span>Status</span>
+            <select id="bookingStatusSelect">
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label>
+            <span>Note</span>
+            <textarea id="bookingNoteInput" rows="3" placeholder="Note"></textarea>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="bookingModalSave" type="button" class="primary">Save</button>
+          <button id="bookingModalCancelBooking" type="button" class="danger">Cancel Booking</button>
+          <button id="bookingModalCancel" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
       <div class="modal-backdrop"></div>
       <div class="modal-content">
@@ -305,6 +563,25 @@
         <div class="modal-actions" style="display:flex; gap:8px; justify-content:flex-end;">
           <button id="valueModalSave" type="button" class="primary">Save</button>
           <button id="valueModalCancel2" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="importCsvModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div id="importCsvModalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-content" style="max-width:980px;">
+        <div class="modal-header">
+          <div>
+            <h3>Import CSV Preview</h3>
+            <p id="importCsvFilePath" class="saved-meta"></p>
+          </div>
+          <button id="importCsvClose" class="ghost-btn" aria-label="Close CSV import modal">&times;</button>
+        </div>
+        <div id="importCsvStatus" class="status"></div>
+        <div id="importCsvBody" class="modal-body"></div>
+        <div class="modal-actions">
+          <button id="importCsvConfirm" type="button" class="primary">Import</button>
+          <button id="importCsvCancel" type="button">Cancel</button>
         </div>
       </div>
     </div>
