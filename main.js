@@ -764,6 +764,28 @@ function generateUuid() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuidText(value) {
+  return UUID_PATTERN.test(String(value || '').trim());
+}
+
+function deterministicUuidFromText(value) {
+  const hash = crypto.createHash('sha1').update(String(value || '')).digest('hex');
+  const bytes = Buffer.from(hash.slice(0, 32), 'hex');
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function toVoucherSyncEntityId(value) {
+  const normalized = normalizeText(value, '');
+  if (!normalized) return '';
+  if (isUuidText(normalized)) return normalized.toLowerCase();
+  return deterministicUuidFromText(`voucher:${normalizeOrgId()}:${normalized}`);
+}
+
 function newVoucherCode() {
   // 6-digit numeric-only serial
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -858,6 +880,7 @@ async function saveVoucherFile(voucher) {
 
 async function deleteVoucherFile(id) {
   const state = readVoucherState();
+  const existing = (state.items || []).find((item) => item.id === id) || null;
   const remaining = (state.items || []).filter((item) => item.id !== id);
   if (remaining.length === state.items.length) return false;
   state.items = remaining;
@@ -866,7 +889,11 @@ async function deleteVoucherFile(id) {
   if (fs.existsSync(targetAssets)) {
     await fsp.rm(targetAssets, { recursive: true, force: true });
   }
-  appendSyncOutboxRecord('vouchers', id, 'delete', { id: String(id || ''), deletedAt: new Date().toISOString() });
+  appendSyncOutboxRecord('vouchers', id, 'delete', {
+    id: String(id || ''),
+    code: normalizeText(existing?.data?.VoucherCode || existing?.data?.Code, ''),
+    deletedAt: new Date().toISOString()
+  });
   return true;
 }
 
@@ -2866,6 +2893,48 @@ function buildSyncUrl(baseUrl, pathname, searchParams = null) {
   return url.toString();
 }
 
+function buildSyncErrorMessage(response, data, fallback = '') {
+  const parts = [];
+  const status = Number(response?.status || 0);
+  if (status > 0) {
+    parts.push(`HTTP ${status}`);
+  }
+
+  const errorCode = normalizeText(data?.error, '');
+  const message = normalizeText(data?.message, '');
+  if (message) {
+    parts.push(message);
+  } else if (errorCode) {
+    parts.push(errorCode);
+  }
+
+  if (Array.isArray(data?.issues) && data.issues.length > 0) {
+    const issues = data.issues
+      .map((issue) => {
+        const path = normalizeText(issue?.path, '');
+        const issueMessage = normalizeText(issue?.message, '');
+        if (path && issueMessage) return `${path}: ${issueMessage}`;
+        return issueMessage || path;
+      })
+      .filter(Boolean);
+    if (issues.length > 0) {
+      parts.push(issues.join('; '));
+    }
+  }
+
+  if (data?.details && typeof data.details === 'object') {
+    try {
+      const details = JSON.stringify(data.details);
+      if (details && details !== '{}') {
+        parts.push(details);
+      }
+    } catch {}
+  }
+
+  const combined = parts.filter(Boolean).join(' | ');
+  return combined || fallback || 'Request failed';
+}
+
 async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
   if (typeof fetch !== 'function') {
     throw new Error('fetch is not available in this runtime');
@@ -2894,7 +2963,7 @@ async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
   }
 
   if (!response.ok) {
-    const message = data?.error || `Request failed (${response.status})`;
+    const message = buildSyncErrorMessage(response, data, `Request failed (${response.status})`);
     throw new Error(message);
   }
   return data;
@@ -3069,13 +3138,77 @@ function markOutboxErrors(dbInstance, entries, updatedAt = '') {
   writeReposFallbackState(state);
 }
 
+function toLegacySyncOperation(row) {
+  const entityType = normalizeText(row?.entityType, '');
+  const payload = row?.payload && typeof row.payload === 'object' ? { ...row.payload } : {};
+  let entityId = normalizeId(row?.entityId);
+
+  if (entityType === 'vouchers' || entityType === 'voucher') {
+    const syncVoucherId = toVoucherSyncEntityId(payload.id || entityId);
+    if (syncVoucherId) {
+      entityId = syncVoucherId;
+      payload.id = syncVoucherId;
+    }
+
+    const code = normalizeText(payload.code || payload.VoucherCode || payload.Code, '');
+    if (code) {
+      payload.code = code;
+    }
+  }
+
+  return {
+    // AdventureWebsite currently validates legacy outbox ids under `id`.
+    id: row.id,
+    // Keep the original desktop field too for easier debugging and future compatibility.
+    opId: row.id,
+    entityType,
+    entityId,
+    op: row.op,
+    payload
+  };
+}
+
 function stringifyConflict(conflict) {
   if (!conflict || typeof conflict !== 'object') return 'Booking conflict';
-  try {
-    return JSON.stringify(conflict);
-  } catch {
-    return normalizeText(conflict.message, 'Booking conflict');
+  const reason = normalizeText(conflict.reason, '');
+  const entityType = normalizeText(conflict.entityType, '');
+  const entityId = normalizeText(conflict.entityId, '');
+  const serverVersion = normalizeText(conflict.serverVersion, '');
+  const parts = [];
+  if (reason) parts.push(reason);
+  if (entityType) parts.push(`entityType=${entityType}`);
+  if (entityId) parts.push(`entityId=${entityId}`);
+  if (serverVersion) parts.push(`serverVersion=${serverVersion}`);
+  if (parts.length > 0) return parts.join(' | ');
+  return normalizeText(conflict.message, 'Booking conflict');
+}
+
+function describeRemoteChangeWarning(change, entityType, payload, entityId) {
+  if (entityType === 'booking' || entityType === 'bookings') {
+    if (!normalizeId(payload?.serviceId)) {
+      return `Skipped booking ${entityId || normalizeText(payload?.id, 'unknown')}: missing serviceId`;
+    }
+    if (!normalizeId(payload?.resourceId)) {
+      return `Skipped booking ${entityId || normalizeText(payload?.id, 'unknown')}: missing resourceId`;
+    }
+    if (!normalizeId(payload?.customerId)) {
+      return `Skipped booking ${entityId || normalizeText(payload?.id, 'unknown')}: missing customerId`;
+    }
   }
+
+  if (entityType === 'customer' || entityType === 'customers') {
+    if (!normalizeText(payload?.name, '')) {
+      return `Skipped customer ${entityId || normalizeText(payload?.id, 'unknown')}: missing name`;
+    }
+  }
+
+  if (entityType === 'voucher' || entityType === 'vouchers') {
+    if (!normalizeText(payload?.code || payload?.VoucherCode || payload?.Code, '')) {
+      return `Skipped voucher ${entityId || normalizeText(payload?.id, 'unknown')}: missing code`;
+    }
+  }
+
+  return `Skipped remote ${entityType || 'entity'} ${entityId || normalizeText(payload?.id, 'unknown')}`;
 }
 
 function applyRemoteServiceChangeDb(dbInstance, op, payload, entityId) {
@@ -3530,35 +3663,64 @@ function applyRemoteBookingChangeState(state, op, payload, entityId) {
   return true;
 }
 
+function findVoucherStateIndexBySyncPayload(items, id, code) {
+  const normalizedId = normalizeText(id, '');
+  const normalizedCode = normalizeCode(code);
+  return items.findIndex((item) => {
+    if (normalizedId && String(item?.id || '') === normalizedId) return true;
+    if (!normalizedCode) return false;
+    const itemCode = normalizeCode(item?.data?.VoucherCode || item?.data?.Code || '');
+    return itemCode === normalizedCode;
+  });
+}
+
 async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstance) {
   const id = normalizeId(payload?.id || entityId);
   if (!id) return false;
   const normalizedOp = normalizeText(op, '').toLowerCase();
   const now = new Date().toISOString();
+  const payloadCode = normalizeText(payload?.code, '');
+  const normalizedPayloadCode = payloadCode ? normalizeNumericCode(payloadCode) : '';
 
   if (normalizedOp === 'delete') {
     const state = readVoucherState();
     const before = Array.isArray(state.items) ? state.items : [];
-    const remaining = before.filter((item) => item.id !== id);
+    const matchedItem =
+      before.find((item) => {
+        if (String(item?.id || '') === String(id)) return true;
+        if (!normalizedPayloadCode) return false;
+        const itemCode = normalizeCode(item?.data?.VoucherCode || item?.data?.Code || '');
+        return itemCode === normalizeCode(normalizedPayloadCode);
+      }) || null;
+    const remaining = before.filter((item) => {
+      if (String(item?.id || '') === String(id)) return false;
+      if (!normalizedPayloadCode) return true;
+      const itemCode = normalizeCode(item?.data?.VoucherCode || item?.data?.Code || '');
+      return itemCode !== normalizeCode(normalizedPayloadCode);
+    });
     if (remaining.length === before.length) return false;
     state.items = remaining;
     await writeVoucherState(state);
-    const targetAssets = path.join(vouchersAssetsRoot(), id);
+    const targetAssets = path.join(vouchersAssetsRoot(), matchedItem?.id || id);
     if (fs.existsSync(targetAssets)) {
       await fsp.rm(targetAssets, { recursive: true, force: true });
     }
     if (dbInstance) {
-      dbInstance.prepare('DELETE FROM vouchers WHERE id = ?').run(id);
+      if (normalizedPayloadCode) {
+        dbInstance.prepare('DELETE FROM vouchers WHERE id = ? OR code = ?').run(id, normalizeCode(normalizedPayloadCode));
+      } else {
+        dbInstance.prepare('DELETE FROM vouchers WHERE id = ?').run(id);
+      }
     }
     return true;
   }
 
   const state = readVoucherState();
   const items = Array.isArray(state.items) ? state.items : [];
-  const index = items.findIndex((item) => item.id === id);
+  const normalizedCode = normalizedPayloadCode;
+  const index = findVoucherStateIndexBySyncPayload(items, id, normalizedCode);
   const existing = index >= 0 ? items[index] : null;
-  const rawCode = normalizeText(payload?.code, existing?.data?.VoucherCode || existing?.data?.Code || '');
-  const code = rawCode ? normalizeNumericCode(rawCode) : normalizeNumericCode(existing?.data?.VoucherCode || existing?.data?.Code || '');
+  const code = normalizedCode || normalizeNumericCode(existing?.data?.VoucherCode || existing?.data?.Code || '');
   const templateId = normalizeText(payload?.templateId, existing?.templateId || '');
   const createdAt = normalizeText(payload?.createdAt, existing?.createdAt || now);
   const updatedAt = normalizeText(payload?.updatedAt, now);
@@ -3566,7 +3728,7 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
   const phone = normalizeText(payload?.phone ?? existing?.phone ?? existing?.data?.phone, '');
 
   const next = {
-    id,
+    id: existing?.id || id,
     templateId,
     createdAt,
     updatedAt,
@@ -3585,13 +3747,13 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
   await writeVoucherState(state);
 
   if (dbInstance) {
-    const existingDb = dbInstance
-      .prepare('SELECT id FROM vouchers WHERE id = ? LIMIT 1')
-      .get(id);
+    const existingDb =
+      dbInstance.prepare('SELECT id FROM vouchers WHERE id = ? LIMIT 1').get(id) ||
+      dbInstance.prepare('SELECT id FROM vouchers WHERE code = ? LIMIT 1').get(normalizeCode(code));
     if (existingDb) {
       dbInstance
         .prepare('UPDATE vouchers SET code = ?, templateId = ?, phone = ?, redeemedAt = COALESCE(redeemedAt, ?) WHERE id = ?')
-        .run(normalizeCode(code), templateId || null, phone || null, redeemedAt, id);
+        .run(normalizeCode(code), templateId || null, phone || null, redeemedAt, existingDb.id);
     }
   }
   return true;
@@ -3600,6 +3762,7 @@ async function applyRemoteVoucherChange({ op, payload, entityId } = {}, dbInstan
 async function applyRemoteChanges(changes, dbInstance) {
   let applied = 0;
   let lastToken = 0;
+  const warnings = [];
   let state = null;
   let stateDirty = false;
   if (!dbInstance) {
@@ -3643,14 +3806,23 @@ async function applyRemoteChanges(changes, dbInstance) {
       if (didApply) stateDirty = true;
     }
 
-    if (didApply) applied += 1;
+    if (didApply) {
+      applied += 1;
+    } else {
+      warnings.push({
+        token: tokenValue || null,
+        entityType,
+        entityId,
+        reason: describeRemoteChangeWarning(change, entityType, payload, entityId)
+      });
+    }
   }
 
   if (state && stateDirty) {
     writeReposFallbackState(state);
   }
 
-  return { appliedCount: applied, lastToken };
+  return { appliedCount: applied, lastToken, warnings };
 }
 
 let syncRunInProgress = false;
@@ -3792,18 +3964,13 @@ const sync = {
 
       const summary = {
         pushed: { total: pendingIds.length, acked: 0, conflicts: 0, errors: 0 },
-        pulled: { count: 0, latestToken: String(sinceToken) },
-        conflicts: []
+        pulled: { count: 0, latestToken: String(sinceToken), warnings: 0 },
+        conflicts: [],
+        warnings: []
       };
 
       if (pendingIds.length) {
-        const ops = pending.map((row) => ({
-          opId: row.id,
-          entityType: row.entityType,
-          entityId: row.entityId,
-          op: row.op,
-          payload: row.payload || {}
-        }));
+        const ops = pending.map((row) => toLegacySyncOperation(row));
 
         let pushResponse = null;
         try {
@@ -3883,8 +4050,12 @@ const sync = {
           throw new Error(pullResponse?.error || 'Sync pull failed');
         }
         const changes = Array.isArray(pullResponse.changes) ? pullResponse.changes : [];
-        const { appliedCount, lastToken } = await applyRemoteChanges(changes, dbInstance);
+        const { appliedCount, lastToken, warnings } = await applyRemoteChanges(changes, dbInstance);
         totalApplied += appliedCount;
+        if (Array.isArray(warnings) && warnings.length > 0) {
+          summary.pulled.warnings += warnings.length;
+          summary.warnings.push(...warnings);
+        }
         if (lastToken > latestToken) {
           latestToken = lastToken;
         }
@@ -3903,6 +4074,9 @@ const sync = {
 
       summary.pulled.count = totalApplied;
       summary.pulled.latestToken = String(latestToken);
+      if (summary.warnings.length > 50) {
+        summary.warnings = summary.warnings.slice(0, 50);
+      }
       return { ok: true, data: summary };
     } catch (err) {
       return { ok: false, error: err?.message || 'Sync failed' };
@@ -4543,35 +4717,60 @@ function saveVoucher(data, templateId) {
   return { id: info.lastInsertRowid, code: codeToUse };
 }
 
+function mapVoucherStateItemToRow(item) {
+  return {
+    id: item.id,
+    name: item.data?.RecipientName || item.data?.Name || '',
+    value: item.data?.Value || '',
+    expires: item.data?.Validity || '',
+    note: item.data?.Note || '',
+    phone: item.phone || item.data?.phone || '',
+    templateId: item.templateId,
+    createdAt: item.createdAt,
+    code: item.data?.VoucherCode || item.data?.Code || '',
+    redeemedAt: item.redeemedAt || null
+  };
+}
+
+function mergeVoucherRows(primaryRows, secondaryRows, limit = 20) {
+  const seenIds = new Set();
+  const seenCodes = new Set();
+  const merged = [];
+
+  const pushRow = (row) => {
+    if (!row) return;
+    const idKey = normalizeText(row.id, '');
+    const codeKey = normalizeCode(row.code);
+    if (idKey && seenIds.has(idKey)) return;
+    if (codeKey && seenCodes.has(codeKey)) return;
+    if (idKey) seenIds.add(idKey);
+    if (codeKey) seenCodes.add(codeKey);
+    merged.push(row);
+  };
+
+  (Array.isArray(primaryRows) ? primaryRows : []).forEach(pushRow);
+  (Array.isArray(secondaryRows) ? secondaryRows : []).forEach(pushRow);
+
+  return merged
+    .sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')))
+    .slice(0, normalizeLimit(limit, 20));
+}
+
 function listVouchers(limit = 20) {
   const dbInstance = getDb();
   const fallbackList = () => {
     const state = readVoucherState();
-    return (state.items || [])
-      .slice(0, limit)
-      .map((v) => ({
-        id: v.id,
-        name: v.data?.RecipientName || v.data?.Name || '',
-        value: v.data?.Value || '',
-        expires: v.data?.Validity || '',
-        note: v.data?.Note || '',
-        phone: v.phone || v.data?.phone || '',
-        templateId: v.templateId,
-        createdAt: v.createdAt,
-        code: v.data?.VoucherCode || v.data?.Code || '',
-        redeemedAt: v.redeemedAt || null
-      }));
+    return (state.items || []).map(mapVoucherStateItemToRow);
   };
 
   if (!dbInstance) {
-    return fallbackList();
+    return mergeVoucherRows([], fallbackList(), limit);
   }
   const stmt = dbInstance.prepare(
     'SELECT id, name, value, expires, note, phone, templateId, createdAt, code, redeemedAt FROM vouchers ORDER BY createdAt DESC LIMIT ?'
   );
   const rows = stmt.all(limit);
-  if (rows.length === 0) return fallbackList();
-  return rows;
+  return mergeVoucherRows(rows, fallbackList(), limit);
 }
 
 function getVoucherById(id) {

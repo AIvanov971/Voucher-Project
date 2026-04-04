@@ -4,8 +4,8 @@
   "description": "Offline voucher PDF generator",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "test:smoke": "electron tests/smoke.js",
+    "start": "node scripts/run-electron.js .",
+    "test:smoke": "node scripts/run-electron.js tests/smoke.js",
     "pack": "electron-builder --dir --win",
     "dist": "electron-builder --win"
   },
