@@ -80,7 +80,16 @@ contextBridge.exposeInMainWorld('api', {
     get: (id) => ipcRenderer.invoke('bookings:get', id),
     save: (booking) => ipcRenderer.invoke('bookings:save', booking),
     delete: (id) => ipcRenderer.invoke('bookings:delete', id),
+    checkSlots: (ids = []) => ipcRenderer.invoke('bookings:checkSlots', ids),
     computeSlots: (payload) => ipcRenderer.invoke('bookings:computeSlots', payload)
+  },
+  reservations: {
+    listEmailConfirmations: (ids = []) => ipcRenderer.invoke('reservations:listEmailConfirmations', ids),
+    listApologyEmails: (ids = []) => ipcRenderer.invoke('reservations:listApologyEmails', ids),
+    prepareApologyEmail: (bookingId) => ipcRenderer.invoke('reservations:prepareApologyEmail', bookingId),
+    confirmEmail: (bookingId) => ipcRenderer.invoke('reservations:confirmEmail', bookingId),
+    sendApologyEmail: (bookingId, alternatives = []) =>
+      ipcRenderer.invoke('reservations:sendApologyEmail', bookingId, alternatives)
   },
   sync: {
     getStatus: () => ipcRenderer.invoke('sync:getStatus'),

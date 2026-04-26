@@ -30,6 +30,8 @@ const importCsvStatus = document.getElementById('importCsvStatus');
 const importCsvBody = document.getElementById('importCsvBody');
 const importCsvFilePath = document.getElementById('importCsvFilePath');
 const VALUE_FIELD_KEYS = ['Value', 'Стойност', 'стойност'];
+const FIXED_EUR_RATE = 1.95583;
+const WEBSITE_SLOT_STEP_MIN = 7 * 60;
 const btnSaveVoucher = document.getElementById('btnSaveVoucher');
 const btnSaveCopy = document.getElementById('btnSaveCopy');
 const toggleTools = document.getElementById('toggleTools');
@@ -52,11 +54,13 @@ const navVouchers = document.getElementById('navVouchers');
 const navServices = document.getElementById('navServices');
 const navResources = document.getElementById('navResources');
 const navSchedule = document.getElementById('navSchedule');
+const navReservations = document.getElementById('navReservations');
 const navBuilder = document.getElementById('navBuilder');
 const sectionVouchers = document.getElementById('view-vouchers');
 const sectionServices = document.getElementById('view-services');
 const sectionResources = document.getElementById('view-resources');
 const sectionSchedule = document.getElementById('view-schedule');
+const sectionReservations = document.getElementById('view-reservations');
 const sectionBuilder = document.getElementById('view-builder');
 const themeToggle = document.getElementById('themeToggle');
 const helpBtn = document.getElementById('helpBtn');
@@ -151,6 +155,17 @@ const bookingNoteInput = document.getElementById('bookingNoteInput');
 const bookingVoucherCodeInput = document.getElementById('bookingVoucherCodeInput');
 const bookingVoucherValidateBtn = document.getElementById('bookingVoucherValidateBtn');
 const bookingVoucherStatus = document.getElementById('bookingVoucherStatus');
+
+// Reservations
+const reservationsSearch = document.getElementById('reservationsSearch');
+const reservationsSourceFilter = document.getElementById('reservationsSourceFilter');
+const reservationsStatusFilter = document.getElementById('reservationsStatusFilter');
+const reservationsRefreshBtn = document.getElementById('reservationsRefreshBtn');
+const reservationsSyncBtn = document.getElementById('reservationsSyncBtn');
+const reservationsStatus = document.getElementById('reservationsStatus');
+const reservationsCount = document.getElementById('reservationsCount');
+const reservationsHint = document.getElementById('reservationsHint');
+const reservationsTableBody = document.getElementById('reservationsTableBody');
 
 // Builder elements
 const tplSelect = document.getElementById('tplSelect');
@@ -256,10 +271,20 @@ const state = {
   scheduleResources: [],
   scheduleCustomers: [],
   scheduleBookings: [],
+  reservations: [],
+  reservationsSearch: '',
+  reservationsSource: 'public',
+  reservationsStatus: 'active',
+  reservationSlotChecks: {},
+  reservationEmailConfirmations: {},
+  reservationEmailSendingId: '',
+  reservationApologyEmails: {},
+  reservationApologySendingId: '',
   editingBookingId: null,
   bookingSlotHintIso: '',
   editingBookingSnapshot: null,
   editingBookingOriginalVoucherCode: '',
+  editingBookingSource: '',
   bookingVoucherId: '',
   bookingVoucherCode: '',
   bookingVoucherState: '',
@@ -360,8 +385,7 @@ async function loadTheme() {
   try {
     const res = await window.api.settings.get();
     const savedTheme = res?.settings?.theme;
-    const savedTest = res?.settings?.testMode;
-    state.testMode = typeof savedTest === 'boolean' ? savedTest : true;
+    state.testMode = false;
     if (savedTheme) {
       applyTheme(savedTheme);
     } else {
@@ -667,6 +691,10 @@ function setScheduleStatus(message, isError = false) {
   setInlineStatus(scheduleStatus, message, isError, false);
 }
 
+function setReservationsStatus(message, isError = false) {
+  setInlineStatus(reservationsStatus, message, isError, false);
+}
+
 function setBookingModalStatus(message, isError = false) {
   setInlineStatus(bookingModalStatus, message, isError, false);
 }
@@ -762,6 +790,9 @@ async function refreshDataAfterSync() {
   if (sectionSchedule?.style.display !== 'none') {
     await initScheduleSection();
   }
+  if (sectionReservations?.style.display !== 'none') {
+    await loadReservations();
+  }
 }
 
 async function runSyncNow() {
@@ -851,7 +882,7 @@ function formatCentsForInput(cents) {
   return (safe / 100).toFixed(2);
 }
 
-function parseEuroInputToCents(value) {
+function parseMoneyInputToCents(value) {
   const raw = String(value || '').trim();
   if (!raw) return 0;
   const normalized = raw.replace(/\s+/g, '').replace(',', '.');
@@ -861,10 +892,19 @@ function parseEuroInputToCents(value) {
   return Math.round(amount * 100);
 }
 
-function formatMoneyFromCents(cents, currency = 'EUR') {
+function normalizeCurrencyCode(value, fallback = 'BGN') {
+  const normalized = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : fallback;
+}
+
+function formatMoneyFromCents(cents, currency = 'BGN') {
   const parsed = Number.parseInt(cents, 10);
   const safe = Number.isFinite(parsed) ? parsed : 0;
-  return `${(safe / 100).toFixed(2)} ${String(currency || 'EUR').toUpperCase()}`;
+  const code = normalizeCurrencyCode(currency, 'BGN');
+  if (safe <= 0 && code === 'BGN') return 'по запитване';
+  const primary = `${(safe / 100).toFixed(2)} ${code}`;
+  if (code !== 'BGN' || safe <= 0) return primary;
+  return `${primary} / ${(safe / 100 / FIXED_EUR_RATE).toFixed(2)} EUR`;
 }
 
 function schedulePad2(value) {
@@ -1133,6 +1173,468 @@ async function loadScheduleLookups() {
   }
 }
 
+function normalizeReservationStatus(value) {
+  const status = String(value || 'confirmed').trim().toLowerCase();
+  if (status === 'canceled') return 'cancelled';
+  return status || 'confirmed';
+}
+
+function normalizeReservationSource(value) {
+  const source = String(value || 'sync').trim().toLowerCase();
+  if (source === 'website' || source === 'web' || source === 'public') return 'public';
+  return source || 'sync';
+}
+
+function sourceLabel(source) {
+  const normalized = normalizeReservationSource(source);
+  if (normalized === 'public') return 'Website';
+  if (normalized === 'desktop') return 'Desktop';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function cssToken(value, fallback = 'item') {
+  return String(value || fallback)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-') || fallback;
+}
+
+function formatReservationDateTime(booking) {
+  const start = new Date(booking?.startAt || '');
+  const end = new Date(booking?.endAt || '');
+  if (Number.isNaN(start.valueOf())) return '';
+  const dateText = start.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+  const startText = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const endText = Number.isNaN(end.valueOf())
+    ? ''
+    : end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return endText ? `${dateText} · ${startText} - ${endText}` : `${dateText} · ${startText}`;
+}
+
+function reservationSearchText(booking) {
+  const customer = customerById(booking.customerId) || {};
+  const parts = [
+    booking.id,
+    booking.status,
+    booking.source,
+    booking.voucherCode,
+    booking.note,
+    serviceNameById(booking.serviceId),
+    resourceNameById(booking.resourceId),
+    customer.name,
+    customer.phone,
+    customer.email
+  ];
+  return parts.join(' ').toLowerCase();
+}
+
+function slotCheckForBooking(booking) {
+  const id = String(booking?.id || '');
+  return state.reservationSlotChecks[id] || {
+    bookingId: id,
+    state: 'checking',
+    isFree: false,
+    reason: 'Checking slot availability...',
+    conflicts: []
+  };
+}
+
+function slotCheckLabel(check) {
+  const stateName = String(check?.state || 'checking').toLowerCase();
+  if (stateName === 'free') return 'Free';
+  if (stateName === 'conflict') return 'Conflict';
+  if (stateName === 'unavailable') return 'Closed';
+  if (stateName === 'invalid') return 'Needs data';
+  if (stateName === 'missing') return 'Missing';
+  return 'Checking';
+}
+
+function slotCheckClass(check) {
+  return cssToken(check?.state || 'checking', 'checking');
+}
+
+function reservationEmailConfirmationForBooking(booking) {
+  return state.reservationEmailConfirmations[String(booking?.id || '')] || null;
+}
+
+function reservationApologyEmailForBooking(booking) {
+  return state.reservationApologyEmails[String(booking?.id || '')] || null;
+}
+
+function formatShortDateTime(value) {
+  const date = new Date(value || '');
+  if (Number.isNaN(date.valueOf())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function formatAlternativeSlot(slot) {
+  const start = new Date(slot?.startAt || '');
+  const end = new Date(slot?.endAt || '');
+  if (Number.isNaN(start.valueOf())) return '';
+  const dateText = start.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+  const startText = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const endText = Number.isNaN(end.valueOf())
+    ? ''
+    : end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const resourceText = slot?.resourceName ? `, ${slot.resourceName}` : '';
+  return `${dateText} ${startText}${endText ? ` - ${endText}` : ''}${resourceText}`;
+}
+
+async function loadReservationSlotChecks(ids = []) {
+  if (!window.api?.bookings?.checkSlots) return;
+  const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!wanted.length) {
+    state.reservationSlotChecks = {};
+    renderReservations();
+    return;
+  }
+  try {
+    const res = await window.api.bookings.checkSlots(wanted);
+    if (!res?.ok) {
+      setReservationsStatus(res?.error || 'Failed to check reservation slots', true);
+      return;
+    }
+    const next = { ...state.reservationSlotChecks };
+    (Array.isArray(res.data) ? res.data : []).forEach((item) => {
+      if (item?.bookingId) next[item.bookingId] = item;
+    });
+    state.reservationSlotChecks = next;
+    renderReservations();
+  } catch (err) {
+    console.error(err);
+    setReservationsStatus(err.message || 'Failed to check reservation slots', true);
+  }
+}
+
+async function loadReservationEmailConfirmations(ids = []) {
+  if (!window.api?.reservations?.listEmailConfirmations) return;
+  const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!wanted.length) {
+    state.reservationEmailConfirmations = {};
+    renderReservations();
+    return;
+  }
+  try {
+    const res = await window.api.reservations.listEmailConfirmations(wanted);
+    if (!res?.ok) {
+      setReservationsStatus(res?.error || 'Failed to load email confirmations', true);
+      return;
+    }
+    const next = { ...state.reservationEmailConfirmations };
+    (Array.isArray(res.data) ? res.data : []).forEach((item) => {
+      if (item?.bookingId) next[item.bookingId] = item;
+    });
+    state.reservationEmailConfirmations = next;
+    renderReservations();
+  } catch (err) {
+    console.error(err);
+    setReservationsStatus(err.message || 'Failed to load email confirmations', true);
+  }
+}
+
+async function loadReservationApologyEmails(ids = []) {
+  if (!window.api?.reservations?.listApologyEmails) return;
+  const wanted = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!wanted.length) {
+    state.reservationApologyEmails = {};
+    renderReservations();
+    return;
+  }
+  try {
+    const res = await window.api.reservations.listApologyEmails(wanted);
+    if (!res?.ok) {
+      setReservationsStatus(res?.error || 'Failed to load apology emails', true);
+      return;
+    }
+    const next = { ...state.reservationApologyEmails };
+    (Array.isArray(res.data) ? res.data : []).forEach((item) => {
+      if (item?.bookingId) next[item.bookingId] = item;
+    });
+    state.reservationApologyEmails = next;
+    renderReservations();
+  } catch (err) {
+    console.error(err);
+    setReservationsStatus(err.message || 'Failed to load apology emails', true);
+  }
+}
+
+async function confirmReservationEmail(booking) {
+  const id = String(booking?.id || '');
+  if (!id || !window.api?.reservations?.confirmEmail) return;
+  const customer = customerById(booking.customerId) || {};
+  const slot = slotCheckForBooking(booking);
+  const existingConfirmation = reservationEmailConfirmationForBooking(booking);
+  if (existingConfirmation?.sentAt) {
+    showBanner('Confirmation email was already sent for this reservation.', 'success');
+    return;
+  }
+  if (!customer.email) {
+    showBanner('Customer email is missing. Add an email before sending confirmation.', 'error');
+    return;
+  }
+  if (!slot.isFree) {
+    showBanner(slot.reason || 'Slot is not free. Resolve the conflict before sending confirmation.', 'error');
+    return;
+  }
+
+  const confirmed = window.confirm(`Confirm this reservation and send email to ${customer.email}?`);
+  if (!confirmed) return;
+
+  state.reservationEmailSendingId = id;
+  renderReservations();
+  setReservationsStatus('Sending confirmation email...');
+  try {
+    const res = await window.api.reservations.confirmEmail(id);
+    if (!res?.ok) {
+      showBanner(res?.error || 'Confirmation email was not sent', 'error');
+      return;
+    }
+    showBanner(`Confirmation email sent to ${customer.email}`, 'success');
+    await loadReservationEmailConfirmations([id]);
+    await loadReservationSlotChecks([id]);
+    setReservationsStatus('');
+  } catch (err) {
+    console.error(err);
+    showBanner(err.message || 'Confirmation email was not sent', 'error');
+  } finally {
+    state.reservationEmailSendingId = '';
+    renderReservations();
+  }
+}
+
+async function sendReservationApologyEmail(booking) {
+  const id = String(booking?.id || '');
+  if (!id || !window.api?.reservations?.prepareApologyEmail || !window.api?.reservations?.sendApologyEmail) return;
+  const customer = customerById(booking.customerId) || {};
+  const slot = slotCheckForBooking(booking);
+  const existingApology = reservationApologyEmailForBooking(booking);
+  if (existingApology?.sentAt) {
+    showBanner('Apology email was already sent for this reservation.', 'success');
+    return;
+  }
+  if (!customer.email) {
+    showBanner('Customer email is missing. Add an email before sending apology.', 'error');
+    return;
+  }
+  if (slot.isFree) {
+    showBanner('Slot is free. Use Confirm & Email instead.', 'error');
+    return;
+  }
+
+  setReservationsStatus('Preparing alternative dates...');
+  let alternatives = [];
+  try {
+    const prepared = await window.api.reservations.prepareApologyEmail(id);
+    if (!prepared?.ok) {
+      showBanner(prepared?.error || 'Could not prepare alternative dates', 'error');
+      setReservationsStatus('');
+      return;
+    }
+    alternatives = Array.isArray(prepared.data?.alternatives) ? prepared.data.alternatives : [];
+  } catch (err) {
+    console.error(err);
+    showBanner(err.message || 'Could not prepare alternative dates', 'error');
+    setReservationsStatus('');
+    return;
+  }
+
+  if (!alternatives.length) {
+    showBanner('No alternative free slots found for this reservation.', 'error');
+    setReservationsStatus('');
+    return;
+  }
+
+  const optionsText = alternatives
+    .map((alternative, index) => `${index + 1}. ${formatAlternativeSlot(alternative)}`)
+    .join('\n');
+  const confirmed = window.confirm(
+    `Send apology email to ${customer.email} with these alternative dates?\n\n${optionsText}`
+  );
+  if (!confirmed) {
+    setReservationsStatus('');
+    return;
+  }
+
+  state.reservationApologySendingId = id;
+  renderReservations();
+  setReservationsStatus('Sending apology email...');
+  try {
+    const res = await window.api.reservations.sendApologyEmail(id, alternatives);
+    if (!res?.ok) {
+      showBanner(res?.error || 'Apology email was not sent', 'error');
+      return;
+    }
+    showBanner(`Apology email sent to ${customer.email}`, 'success');
+    await loadReservationApologyEmails([id]);
+    await loadReservationSlotChecks([id]);
+    setReservationsStatus('');
+  } catch (err) {
+    console.error(err);
+    showBanner(err.message || 'Apology email was not sent', 'error');
+  } finally {
+    state.reservationApologySendingId = '';
+    renderReservations();
+  }
+}
+
+function filteredReservations() {
+  const sourceFilter = state.reservationsSource || 'public';
+  const statusFilter = state.reservationsStatus || 'active';
+  const needle = String(state.reservationsSearch || '').trim().toLowerCase();
+  return (Array.isArray(state.reservations) ? state.reservations : [])
+    .filter((booking) => {
+      const source = normalizeReservationSource(booking.source);
+      if (sourceFilter !== 'all' && source !== sourceFilter) return false;
+
+      const status = normalizeReservationStatus(booking.status);
+      if (statusFilter === 'active') {
+        if (status === 'cancelled') return false;
+      } else if (statusFilter !== 'all' && status !== statusFilter) {
+        return false;
+      }
+
+      if (needle && !reservationSearchText(booking).includes(needle)) return false;
+      return true;
+    })
+    .sort((a, b) => String(b.startAt || '').localeCompare(String(a.startAt || '')));
+}
+
+function renderReservations() {
+  if (!reservationsTableBody) return;
+  const rows = filteredReservations();
+  const total = Array.isArray(state.reservations) ? state.reservations.length : 0;
+  const websiteTotal = state.reservations.filter((booking) => normalizeReservationSource(booking.source) === 'public').length;
+  reservationsTableBody.innerHTML = '';
+
+  if (reservationsCount) {
+    reservationsCount.textContent = `${rows.length} of ${total} reservations`;
+  }
+  if (reservationsHint) {
+    reservationsHint.textContent =
+      state.reservationsSource === 'public'
+        ? `${websiteTotal} website reservation(s) available locally after sync.`
+        : 'Showing reservations from the local synced database.';
+  }
+
+  if (!rows.length) {
+    const emptyRow = document.createElement('tr');
+    const emptyText =
+      state.reservationsSource === 'public'
+        ? 'No website reservations found. Run Sync Now after the website receives bookings.'
+        : 'No reservations match the current filters.';
+    emptyRow.innerHTML = `<td colspan="10" class="empty-state">${escapeHtml(emptyText)}</td>`;
+    reservationsTableBody.appendChild(emptyRow);
+    return;
+  }
+
+  rows.forEach((booking) => {
+    const row = document.createElement('tr');
+    const customer = customerById(booking.customerId) || {};
+    const customerMeta = [customer.phone, customer.email].filter(Boolean).join(' · ');
+    const status = normalizeReservationStatus(booking.status);
+    const source = normalizeReservationSource(booking.source);
+    const statusClass = cssToken(status, 'confirmed');
+    const sourceClass = cssToken(source, 'sync');
+    const slot = slotCheckForBooking(booking);
+    const slotClass = slotCheckClass(slot);
+    const confirmation = reservationEmailConfirmationForBooking(booking);
+    const apology = reservationApologyEmailForBooking(booking);
+    const emailSent = Boolean(confirmation?.sentAt);
+    const apologySent = Boolean(apology?.sentAt);
+    const isSendingEmail = state.reservationEmailSendingId === booking.id;
+    const isSendingApology = state.reservationApologySendingId === booking.id;
+    const canSendEmail =
+      slot.isFree && customer.email && !emailSent && status !== 'cancelled' && !isSendingEmail && !isSendingApology;
+    const emailButtonLabel = emailSent ? 'Email Sent' : isSendingEmail ? 'Sending...' : 'Confirm & Email';
+    const canShowApology = !slot.isFree && slot.state !== 'checking';
+    const canSendApology =
+      canShowApology && customer.email && !apologySent && status !== 'cancelled' && !isSendingEmail && !isSendingApology;
+    const apologyButtonLabel = apologySent ? 'Apology Sent' : isSendingApology ? 'Sending...' : 'Apology & Options';
+    const emailMeta = emailSent
+      ? `<div class="saved-meta">Sent ${escapeHtml(formatShortDateTime(confirmation.sentAt))}</div>`
+      : '';
+    const apologyMeta = apologySent
+      ? `<div class="saved-meta">Apology ${escapeHtml(formatShortDateTime(apology.sentAt))}</div>`
+      : '';
+    row.innerHTML = `
+      <td>${escapeHtml(formatReservationDateTime(booking))}</td>
+      <td>
+        <div class="reservation-primary">${escapeHtml(customer.name || booking.customerId || '')}</div>
+        ${customerMeta ? `<div class="saved-meta">${escapeHtml(customerMeta)}</div>` : ''}
+      </td>
+      <td>${escapeHtml(serviceNameById(booking.serviceId))}</td>
+      <td>${escapeHtml(resourceNameById(booking.resourceId))}</td>
+      <td>
+        <span class="slot-pill slot-${slotClass}" title="${escapeHtml(slot.reason || '')}">${escapeHtml(slotCheckLabel(slot))}</span>
+        ${slot.reason ? `<div class="saved-meta">${escapeHtml(slot.reason)}</div>` : ''}
+      </td>
+      <td><span class="badge ${statusClass}">${escapeHtml(status)}</span></td>
+      <td><span class="source-pill source-${sourceClass}">${escapeHtml(sourceLabel(source))}</span></td>
+      <td class="mono">${escapeHtml(booking.voucherCode || '')}</td>
+      <td>${escapeHtml(booking.note || '')}</td>
+      <td>
+        <div class="row-actions">
+          <button type="button" data-action="confirm-email" data-id="${escapeHtml(booking.id || '')}" ${canSendEmail ? '' : 'disabled'}>${escapeHtml(emailButtonLabel)}</button>
+          ${
+            canShowApology || apologySent || isSendingApology
+              ? `<button type="button" data-action="apology-email" data-id="${escapeHtml(booking.id || '')}" ${canSendApology ? '' : 'disabled'}>${escapeHtml(apologyButtonLabel)}</button>`
+              : ''
+          }
+          <button type="button" data-action="open" data-id="${escapeHtml(booking.id || '')}">Open</button>
+        </div>
+        ${emailMeta}${apologyMeta}
+      </td>
+    `;
+    row.querySelector('[data-action="open"]')?.addEventListener('click', () => openBookingModal(booking));
+    row.querySelector('[data-action="confirm-email"]')?.addEventListener('click', () => confirmReservationEmail(booking));
+    row.querySelector('[data-action="apology-email"]')?.addEventListener('click', () => sendReservationApologyEmail(booking));
+    reservationsTableBody.appendChild(row);
+  });
+}
+
+async function loadReservations() {
+  setReservationsStatus('Loading reservations...');
+  try {
+    const ready = await loadScheduleLookups();
+    if (!ready) return;
+    const res = await window.api.bookings.list({}, []);
+    if (!res?.ok) {
+      setReservationsStatus(res?.error || 'Failed to load reservations', true);
+      return;
+    }
+    state.reservations = Array.isArray(res.data) ? res.data : [];
+    const ids = state.reservations.map((booking) => booking.id).filter(Boolean);
+    state.reservationSlotChecks = {};
+    state.reservationEmailConfirmations = {};
+    state.reservationApologyEmails = {};
+    renderReservations();
+    await Promise.all([
+      loadReservationSlotChecks(ids),
+      loadReservationEmailConfirmations(ids),
+      loadReservationApologyEmails(ids)
+    ]);
+    setReservationsStatus('');
+  } catch (err) {
+    console.error(err);
+    setReservationsStatus(err.message || 'Failed to load reservations', true);
+  }
+}
+
 function renderScheduleDayHeader() {
   if (!scheduleDayTitle) return;
   const dateLabel = formatScheduleDateLabel(state.scheduleDate);
@@ -1291,6 +1793,7 @@ async function openBookingModal(booking = null, seed = {}) {
       }
     : null;
   state.editingBookingOriginalVoucherCode = String(booking?.voucherCode || '').trim();
+  state.editingBookingSource = String(booking?.source || '').trim();
   const dateValue = normalizeDateValue(seed.date || booking?.startAt || state.scheduleDate || todayDateText());
   if (seed.startMin !== undefined && seed.startMin !== null) {
     const slotHint = localDateTimeToIso(dateValue, minutesToTimeText(seed.startMin));
@@ -1336,6 +1839,7 @@ function closeBookingModal() {
   state.bookingSlotHintIso = '';
   state.editingBookingSnapshot = null;
   state.editingBookingOriginalVoucherCode = '';
+  state.editingBookingSource = '';
   resetBookingVoucherLink();
   if (bookingVoucherCodeInput) bookingVoucherCodeInput.value = '';
   bookingModal?.classList.remove('open');
@@ -1397,6 +1901,7 @@ async function refreshBookingStartSlots(preferredIso = '') {
       resourceId,
       from: date,
       to: date,
+      slotStepMin: WEBSITE_SLOT_STEP_MIN,
       includeEndAt: true
     });
 
@@ -1559,7 +2064,7 @@ async function saveBookingFromModal() {
       endAt,
       status,
       note,
-      source: 'desktop',
+      source: state.editingBookingId ? state.editingBookingSource || 'desktop' : 'desktop',
       voucherId,
       voucherCode
     };
@@ -1576,6 +2081,10 @@ async function saveBookingFromModal() {
     state.scheduleServiceId = scheduleServiceSelect?.value || state.scheduleServiceId;
     renderScheduleFilters();
     await loadScheduleBookings();
+    if (sectionReservations?.style.display !== 'none') {
+      await loadReservations();
+      setReservationsStatus('Reservation saved');
+    }
     await refreshSyncIndicator();
     setScheduleStatus('Booking saved');
   } catch (err) {
@@ -1620,6 +2129,10 @@ async function cancelBookingFromModal() {
 
     closeBookingModal();
     await loadScheduleBookings();
+    if (sectionReservations?.style.display !== 'none') {
+      await loadReservations();
+      setReservationsStatus('Reservation cancelled');
+    }
     await refreshSyncIndicator();
     setScheduleStatus('Booking cancelled');
   } catch (err) {
@@ -2012,7 +2525,7 @@ function renderServicesTable() {
     row.innerHTML = `
       <td>${escapeHtml(service.name || '')}</td>
       <td>${escapeHtml(String(service.durationMin || 30))} min</td>
-      <td>${escapeHtml(formatMoneyFromCents(service.priceCents, service.currency || 'EUR'))}</td>
+      <td>${escapeHtml(formatMoneyFromCents(service.priceCents, service.currency || 'BGN'))}</td>
       <td>${activeBadge}</td>
       <td>
         <div class="row-actions">
@@ -2051,7 +2564,7 @@ function openServiceModal(service = null) {
   if (serviceNameInput) serviceNameInput.value = service?.name || '';
   if (serviceDurationInput) serviceDurationInput.value = String(service?.durationMin || 30);
   if (servicePriceInput) servicePriceInput.value = formatCentsForInput(service?.priceCents || 0);
-  if (serviceCurrencyInput) serviceCurrencyInput.value = 'EUR';
+  if (serviceCurrencyInput) serviceCurrencyInput.value = normalizeCurrencyCode(service?.currency, 'BGN');
   if (serviceActiveInput) serviceActiveInput.checked = Number(service?.isActive ?? 1) !== 0;
   setServiceModalStatus('');
   serviceModal?.classList.add('open');
@@ -2072,7 +2585,7 @@ async function saveServiceFromModal() {
     setServiceModalStatus('Name is required', true);
     return;
   }
-  const priceCents = parseEuroInputToCents(servicePriceInput?.value);
+  const priceCents = parseMoneyInputToCents(servicePriceInput?.value);
   if (priceCents === null) {
     setServiceModalStatus('Price must be a valid amount like 12.50 or 12,50', true);
     return;
@@ -2083,7 +2596,7 @@ async function saveServiceFromModal() {
     name,
     durationMin: Math.max(1, Number.parseInt(serviceDurationInput?.value || '30', 10) || 30),
     priceCents,
-    currency: 'EUR',
+    currency: normalizeCurrencyCode(serviceCurrencyInput?.value, 'BGN'),
     isActive: serviceActiveInput?.checked ? 1 : 0
   };
 
@@ -3076,12 +3589,14 @@ function switchMainSection(target) {
   sectionServices.style.display = target === 'services' ? 'block' : 'none';
   sectionResources.style.display = target === 'resources' ? 'block' : 'none';
   sectionSchedule.style.display = target === 'schedule' ? 'block' : 'none';
+  if (sectionReservations) sectionReservations.style.display = target === 'reservations' ? 'block' : 'none';
   sectionBuilder.style.display = target === 'builder' ? 'block' : 'none';
 
   navVouchers.classList.toggle('active', target === 'vouchers');
   navServices.classList.toggle('active', target === 'services');
   navResources.classList.toggle('active', target === 'resources');
   navSchedule.classList.toggle('active', target === 'schedule');
+  navReservations?.classList.toggle('active', target === 'reservations');
   navBuilder.classList.toggle('active', target === 'builder');
 
   if (target === 'builder') {
@@ -3096,6 +3611,9 @@ function switchMainSection(target) {
   }
   if (target === 'schedule') {
     initScheduleSection();
+  }
+  if (target === 'reservations') {
+    loadReservations();
   }
 }
 function renderValidateDetails(voucher, status) {
@@ -3917,6 +4435,7 @@ async function init() {
   navServices.addEventListener('click', () => switchMainSection('services'));
   navResources.addEventListener('click', () => switchMainSection('resources'));
   navSchedule.addEventListener('click', () => switchMainSection('schedule'));
+  navReservations?.addEventListener('click', () => switchMainSection('reservations'));
   navBuilder.addEventListener('click', () => switchMainSection('builder'));
   themeToggle?.addEventListener('click', toggleTheme);
   btnSyncNow?.addEventListener('click', runSyncNow);
@@ -4037,6 +4556,20 @@ async function init() {
   scheduleRefreshBtn?.addEventListener('click', async () => {
     await initScheduleSection();
   });
+  reservationsSearch?.addEventListener('input', (e) => {
+    state.reservationsSearch = e.target.value || '';
+    renderReservations();
+  });
+  reservationsSourceFilter?.addEventListener('change', (e) => {
+    state.reservationsSource = e.target.value || 'public';
+    renderReservations();
+  });
+  reservationsStatusFilter?.addEventListener('change', (e) => {
+    state.reservationsStatus = e.target.value || 'active';
+    renderReservations();
+  });
+  reservationsRefreshBtn?.addEventListener('click', loadReservations);
+  reservationsSyncBtn?.addEventListener('click', runSyncNow);
   btnServiceAdd?.addEventListener('click', () => openServiceModal());
   btnResourceAdd?.addEventListener('click', () => openResourceModal());
 
@@ -4179,4 +4712,3 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
-

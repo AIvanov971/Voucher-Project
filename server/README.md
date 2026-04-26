@@ -14,7 +14,7 @@ Node.js API skeleton for desktop sync.
    ```bash
    npm install
    ```
-3. Create env file:
+3. Create env file and replace the production placeholders with real values:
    ```bash
    cp .env.example .env
    ```
@@ -29,13 +29,16 @@ Node.js API skeleton for desktop sync.
 
 Default URL: `http://127.0.0.1:8787`
 
+For a temporary local development server only, you can set `NODE_ENV=development` in `.env`. In production mode the server refuses default test credentials and requires a `JWT_SECRET` of at least 32 characters.
+
 ## Environment
+- `NODE_ENV` default `development`; set to `production` for real deployments
 - `PORT` default `8787`
 - `HOST` default `127.0.0.1`
 - `DB_PATH` default `./data/server.sqlite`
-- `AUTH_EMAIL` default `admin@example.com`
-- `AUTH_PASSWORD` default `change-me`
-- `JWT_SECRET` default `dev-only-change-me`
+- `AUTH_EMAIL` required in production
+- `AUTH_PASSWORD` required in production
+- `JWT_SECRET` required in production and must be at least 32 characters
 - `JWT_EXPIRES_IN` default `12h`
 - `DEFAULT_ORG_ID` default `local`
 
@@ -44,7 +47,7 @@ Default URL: `http://127.0.0.1:8787`
 ```bash
 curl -X POST http://127.0.0.1:8787/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@example.com\",\"password\":\"change-me\",\"orgId\":\"local\"}"
+  -d "{\"email\":\"desktop-sync@example.com\",\"password\":\"<your-password>\",\"orgId\":\"local\"}"
 ```
 
 ### Push outbox operations

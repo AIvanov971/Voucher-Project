@@ -107,6 +107,89 @@ const SYNC_STATE_ID = 'local';
 const CSV_IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const csvImportPreviewStore = new Map();
 const VOUCHER_EXPIRY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const APP_PRODUCT_NAME = 'LN software';
+const LEGACY_APP_NAME = 'LNvoucher-maker';
+const FIXED_EUR_RATE = 1.95583;
+const WEBSITE_SLOT_STEP_MIN = 7 * 60;
+const WEBSITE_CATALOG_SEEDED_AT = '2026-04-22T00:00:00.000Z';
+
+const WEBSITE_SERVICES = [
+  {
+    id: 'c54bc0ad-bdc6-46c1-b2ee-6d6dab1d32f0',
+    name: 'ATV Старт край Калофер',
+    durationMin: 75,
+    priceCents: 12900,
+    currency: 'BGN'
+  },
+  {
+    id: 'b9fb6b49-ca8e-41ab-9ff1-d34708c670f2',
+    name: 'Premium ATV Панорама',
+    durationMin: 120,
+    priceCents: 18900,
+    currency: 'BGN'
+  },
+  {
+    id: '13a347c1-d364-4cf9-bf95-7e7ce11cfdbd',
+    name: 'UTV / Buggy Central Balkan',
+    durationMin: 110,
+    priceCents: 24900,
+    currency: 'BGN'
+  },
+  {
+    id: '5e19f77e-d1ef-46d2-a993-4f6632906a49',
+    name: 'Paintball Forest Arena',
+    durationMin: 90,
+    priceCents: 22000,
+    currency: 'BGN'
+  },
+  {
+    id: 'aa8a3a3b-7c3d-42a7-a1fb-1c5f971edcde',
+    name: 'Разходки с джип край Калофер',
+    durationMin: 90,
+    priceCents: 0,
+    currency: 'BGN'
+  },
+  {
+    id: 'website-kids-track',
+    name: 'Детска писта',
+    durationMin: 60,
+    priceCents: 0,
+    currency: 'BGN'
+  }
+];
+
+const WEBSITE_RESOURCES = [
+  {
+    id: 'website-resource-atv-fleet',
+    name: 'ATV Fleet - Kalofer Base',
+    type: 'vehicle_fleet',
+    serviceIds: ['c54bc0ad-bdc6-46c1-b2ee-6d6dab1d32f0', 'b9fb6b49-ca8e-41ab-9ff1-d34708c670f2']
+  },
+  {
+    id: 'website-resource-utv-buggy',
+    name: 'UTV / Buggy - Kalofer Base',
+    type: 'vehicle',
+    serviceIds: ['13a347c1-d364-4cf9-bf95-7e7ce11cfdbd']
+  },
+  {
+    id: 'website-resource-jeep',
+    name: 'Jeep - Kalofer Base',
+    type: 'vehicle',
+    serviceIds: ['aa8a3a3b-7c3d-42a7-a1fb-1c5f971edcde']
+  },
+  {
+    id: 'website-resource-paintball-arena',
+    name: 'Paintball Forest Arena - Kalofer',
+    type: 'arena',
+    serviceIds: ['5e19f77e-d1ef-46d2-a993-4f6632906a49']
+  },
+  {
+    id: 'website-resource-kids-track',
+    name: 'Kids Track - Kalofer',
+    type: 'track',
+    serviceIds: ['website-kids-track']
+  }
+];
 
 let db;
 let dbPath;
@@ -114,15 +197,66 @@ let voucherExpiryCheckTimer = null;
 
 const settingsFilePath = () => path.join(app.getPath('userData'), 'settings.json');
 
-async function readSettings() {
-  const file = settingsFilePath();
+function settingsFilePathForAppName(appName) {
+  return path.join(app.getPath('appData'), appName, 'settings.json');
+}
+
+function alternateSettingsFilePaths() {
+  const current = settingsFilePath();
+  const candidates = [settingsFilePathForAppName(APP_PRODUCT_NAME), settingsFilePathForAppName(LEGACY_APP_NAME)];
+  return candidates.filter((file, index) => file !== current && candidates.indexOf(file) === index);
+}
+
+async function readJsonObjectFile(file) {
   if (!fs.existsSync(file)) return {};
   try {
     const content = await fsp.readFile(file, 'utf-8');
-    return JSON.parse(content);
+    const data = JSON.parse(content);
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
   } catch {
     return {};
   }
+}
+
+function hasRequiredSyncConnectionSettings(settings) {
+  const config = extractSyncSettings(settings || {});
+  return Boolean(config.baseUrl && config.email && config.password);
+}
+
+function mergeSettingsWithSyncFallback(primary, fallback) {
+  const primarySync =
+    primary?.sync && typeof primary.sync === 'object' && !Array.isArray(primary.sync) ? primary.sync : {};
+  const fallbackSync =
+    fallback?.sync && typeof fallback.sync === 'object' && !Array.isArray(fallback.sync) ? fallback.sync : {};
+  const primaryConfig = extractSyncSettings(primary || {});
+  return {
+    ...(fallback || {}),
+    ...(primary || {}),
+    sync: {
+      ...fallbackSync,
+      ...primarySync,
+      ...(primaryConfig.baseUrl ? { baseUrl: primaryConfig.baseUrl } : {}),
+      ...(primaryConfig.email ? { email: primaryConfig.email } : {}),
+      ...(primaryConfig.password ? { password: primaryConfig.password } : {}),
+      ...(primaryConfig.orgId ? { orgId: primaryConfig.orgId } : {})
+    }
+  };
+}
+
+async function readSettings() {
+  const file = settingsFilePath();
+  const primary = await readJsonObjectFile(file);
+  if (hasRequiredSyncConnectionSettings(primary)) {
+    return primary;
+  }
+
+  for (const fallbackFile of alternateSettingsFilePaths()) {
+    const fallback = await readJsonObjectFile(fallbackFile);
+    if (hasRequiredSyncConnectionSettings(fallback)) {
+      return mergeSettingsWithSyncFallback(primary, fallback);
+    }
+  }
+  return primary;
 }
 
 async function writeSettings(data) {
@@ -161,6 +295,10 @@ function normalizeReposFallbackState(state) {
     customers: Array.isArray(state?.customers) ? state.customers : [],
     bookings: Array.isArray(state?.bookings) ? state.bookings : [],
     voucherRedemptions: Array.isArray(state?.voucherRedemptions) ? state.voucherRedemptions : [],
+    reservationEmailConfirmations: Array.isArray(state?.reservationEmailConfirmations)
+      ? state.reservationEmailConfirmations
+      : [],
+    reservationApologyEmails: Array.isArray(state?.reservationApologyEmails) ? state.reservationApologyEmails : [],
     syncOutbox: Array.isArray(state?.syncOutbox) ? state.syncOutbox : [],
     syncState: {
       id: String(syncState.id || SYNC_STATE_ID).trim() || SYNC_STATE_ID,
@@ -283,6 +421,14 @@ function normalizeDateFromAny(value, fallback = '') {
   return parsed.toISOString().slice(0, 10);
 }
 
+function localDateKeyFromDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.valueOf())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeIsoDateTime(value, fallback = '') {
   if (value === undefined || value === null || value === '') return fallback;
   if (value instanceof Date && !Number.isNaN(value.valueOf())) return value.toISOString();
@@ -304,7 +450,15 @@ function normalizeBookingStatus(value, fallback = 'confirmed') {
 
 function normalizeBookingSource(value, fallback = 'desktop') {
   const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'website' || normalized === 'web' || normalized === 'public') return 'public';
   return normalized || fallback;
+}
+
+function websiteResourceIdForService(serviceId) {
+  const id = normalizeId(serviceId);
+  if (!id) return '';
+  const resource = WEBSITE_RESOURCES.find((item) => uniqueIds(item.serviceIds).includes(id));
+  return normalizeId(resource?.id);
 }
 
 function normalizeDateRangeInput(range) {
@@ -458,7 +612,7 @@ function toServiceSyncPayload(service) {
     name: normalizeText(service?.name, ''),
     durationMin: normalizePositiveInteger(service?.durationMin, 30),
     priceCents: normalizeInteger(service?.priceCents, 0),
-    currency: normalizeText(service?.currency, 'EUR'),
+    currency: normalizeCurrencyCode(service?.currency, 'BGN'),
     isActive: normalizeFlag(service?.isActive, 1),
     updatedAt: normalizeText(service?.updatedAt, ''),
     deletedAt: normalizeDeletedAt(service?.deletedAt, null)
@@ -473,6 +627,45 @@ function toResourceSyncPayload(resource) {
     isActive: normalizeFlag(resource?.isActive, 1),
     updatedAt: normalizeText(resource?.updatedAt, ''),
     deletedAt: normalizeDeletedAt(resource?.deletedAt, null)
+  };
+}
+
+function toResourceServicesSyncPayload(resourceId, serviceIds = [], updatedAt = '') {
+  const rid = normalizeId(resourceId);
+  return {
+    id: rid,
+    resourceId: rid,
+    serviceIds: uniqueIds(serviceIds),
+    updatedAt: normalizeText(updatedAt, new Date().toISOString())
+  };
+}
+
+function toAvailabilityRuleSyncPayload(rule) {
+  const breaks = parseBreaksJsonArray(rule?.breaksJson || rule?.breaks || '[]');
+  return {
+    id: normalizeId(rule?.id),
+    resourceId: normalizeId(rule?.resourceId),
+    weekday: normalizeWeekday(rule?.weekday, 0),
+    startTime: normalizeTimeText(rule?.startTime, ''),
+    endTime: normalizeTimeText(rule?.endTime, ''),
+    breaks,
+    breaksJson: JSON.stringify(breaks),
+    updatedAt: normalizeText(rule?.updatedAt, ''),
+    deletedAt: normalizeDeletedAt(rule?.deletedAt, null)
+  };
+}
+
+function toAvailabilityExceptionSyncPayload(ex) {
+  return {
+    id: normalizeId(ex?.id),
+    resourceId: normalizeId(ex?.resourceId),
+    date: normalizeDateText(ex?.date, ''),
+    isOff: normalizeFlag(ex?.isOff, 1),
+    startTime: normalizeOptionalText(ex?.startTime, null),
+    endTime: normalizeOptionalText(ex?.endTime, null),
+    note: normalizeOptionalText(ex?.note, null),
+    updatedAt: normalizeText(ex?.updatedAt, ''),
+    deletedAt: normalizeDeletedAt(ex?.deletedAt, null)
   };
 }
 
@@ -496,8 +689,11 @@ function toBookingSyncPayload(booking) {
     startAt: normalizeIsoDateTime(booking?.startAt, ''),
     endAt: normalizeIsoDateTime(booking?.endAt, ''),
     status: normalizeBookingStatus(booking?.status, 'confirmed'),
+    note: normalizeOptionalText(booking?.note, null),
+    source: normalizeBookingSource(booking?.source, 'desktop'),
     voucherId: normalizeOptionalText(booking?.voucherId, null),
     voucherCode: normalizeOptionalText(booking?.voucherCode, null),
+    createdAt: normalizeText(booking?.createdAt, ''),
     updatedAt: normalizeText(booking?.updatedAt, ''),
     deletedAt: normalizeDeletedAt(booking?.deletedAt, null)
   };
@@ -1185,6 +1381,299 @@ function getDb() {
   return db;
 }
 
+function normalizeCurrencyCode(value, fallback = 'BGN') {
+  const normalized = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : fallback;
+}
+
+function moneyMinorLabel(cents, currency = 'BGN') {
+  const amount = Math.max(0, normalizeInteger(cents, 0)) / 100;
+  const code = normalizeCurrencyCode(currency, 'BGN');
+  return `${amount.toFixed(2)} ${code}`;
+}
+
+function dualMoneyMinorLabel(cents, currency = 'BGN') {
+  const amountCents = normalizeInteger(cents, 0);
+  const code = normalizeCurrencyCode(currency, 'BGN');
+  if (amountCents <= 0) return 'on request';
+  if (code !== 'BGN') return moneyMinorLabel(amountCents, code);
+  const eurAmount = amountCents / 100 / FIXED_EUR_RATE;
+  return `${moneyMinorLabel(amountCents, 'BGN')} / ${eurAmount.toFixed(2)} EUR`;
+}
+
+function websiteValueOptionForService(service) {
+  const name = normalizeText(service?.name, 'Service');
+  const price = dualMoneyMinorLabel(service?.priceCents, service?.currency);
+  return `${name} - ${price}`;
+}
+
+function seedRowStamp(index = 0) {
+  const base = new Date(WEBSITE_CATALOG_SEEDED_AT).getTime();
+  return new Date(base + Number(index || 0) * 1000).toISOString();
+}
+
+function websiteRuleId(resourceId, weekday) {
+  return `website-rule-${resourceId}-${weekday}`;
+}
+
+function websiteAvailabilityRules(resourceId, index = 0) {
+  return [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    id: websiteRuleId(resourceId, weekday),
+    orgId: normalizeOrgId(),
+    resourceId,
+    weekday,
+    startTime: '08:00',
+    endTime: '17:00',
+    breaksJson: '[]',
+    createdAt: seedRowStamp(index * 10 + weekday),
+    updatedAt: seedRowStamp(index * 10 + weekday),
+    deletedAt: null
+  }));
+}
+
+function serviceMatchesSeed(existing, service) {
+  if (!existing) return false;
+  return (
+    normalizeText(existing.name, '') === normalizeText(service.name, '') &&
+    normalizePositiveInteger(existing.durationMin, 30) === normalizePositiveInteger(service.durationMin, 30) &&
+    normalizeInteger(existing.priceCents, 0) === normalizeInteger(service.priceCents, 0) &&
+    normalizeCurrencyCode(existing.currency, 'BGN') === normalizeCurrencyCode(service.currency, 'BGN') &&
+    normalizeFlag(existing.isActive, 1) === 1 &&
+    !normalizeDeletedAt(existing.deletedAt, null)
+  );
+}
+
+function resourceMatchesSeed(existing, resource) {
+  if (!existing) return false;
+  return (
+    normalizeText(existing.name, '') === normalizeText(resource.name, '') &&
+    normalizeText(existing.type, 'employee') === normalizeText(resource.type, 'employee') &&
+    normalizeFlag(existing.isActive, 1) === 1 &&
+    !normalizeDeletedAt(existing.deletedAt, null)
+  );
+}
+
+function availabilityRuleMatchesSeed(existing, rule) {
+  if (!existing) return false;
+  return (
+    normalizeId(existing.resourceId) === normalizeId(rule.resourceId) &&
+    normalizeWeekday(existing.weekday, -1) === normalizeWeekday(rule.weekday, -1) &&
+    normalizeTimeText(existing.startTime, '') === normalizeTimeText(rule.startTime, '') &&
+    normalizeTimeText(existing.endTime, '') === normalizeTimeText(rule.endTime, '') &&
+    JSON.stringify(parseBreaksJsonArray(existing.breaksJson || '[]')) === JSON.stringify(parseBreaksJsonArray(rule.breaksJson || '[]')) &&
+    !normalizeDeletedAt(existing.deletedAt, null)
+  );
+}
+
+function sortedIds(values = []) {
+  return uniqueIds(values).sort((a, b) => a.localeCompare(b));
+}
+
+function upsertWebsiteServiceSeed(dbInstance, service, index) {
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, name, durationMin, priceCents, currency, isActive, createdAt, updatedAt, deletedAt
+         FROM services
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(service.id) || null;
+  if (serviceMatchesSeed(existing, service)) return false;
+
+  const stamp = seedRowStamp(index);
+  const row = {
+    id: service.id,
+    orgId: normalizeOrgId(),
+    name: service.name,
+    durationMin: service.durationMin,
+    priceCents: service.priceCents,
+    currency: normalizeCurrencyCode(service.currency, 'BGN'),
+    isActive: 1,
+    createdAt: normalizeText(existing?.createdAt, stamp),
+    updatedAt: stamp,
+    deletedAt: null
+  };
+
+  dbInstance
+    .prepare(
+      `INSERT INTO services (id, orgId, name, durationMin, priceCents, currency, isActive, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         name = excluded.name,
+         durationMin = excluded.durationMin,
+         priceCents = excluded.priceCents,
+         currency = excluded.currency,
+         isActive = excluded.isActive,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      row.id,
+      row.orgId,
+      row.name,
+      row.durationMin,
+      row.priceCents,
+      row.currency,
+      row.isActive,
+      row.createdAt,
+      row.updatedAt,
+      row.deletedAt
+    );
+  appendSyncOutboxRecord('services', row.id, 'upsert', toServiceSyncPayload(row), dbInstance);
+  return true;
+}
+
+function upsertWebsiteResourceSeed(dbInstance, resource, index) {
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, name, type, isActive, createdAt, updatedAt, deletedAt
+         FROM resources
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(resource.id) || null;
+  if (resourceMatchesSeed(existing, resource)) return false;
+
+  const stamp = seedRowStamp(100 + index);
+  const row = {
+    id: resource.id,
+    orgId: normalizeOrgId(),
+    name: resource.name,
+    type: resource.type,
+    isActive: 1,
+    createdAt: normalizeText(existing?.createdAt, stamp),
+    updatedAt: stamp,
+    deletedAt: null
+  };
+
+  dbInstance
+    .prepare(
+      `INSERT INTO resources (id, orgId, name, type, isActive, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         name = excluded.name,
+         type = excluded.type,
+         isActive = excluded.isActive,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(row.id, row.orgId, row.name, row.type, row.isActive, row.createdAt, row.updatedAt, row.deletedAt);
+  appendSyncOutboxRecord('resources', row.id, 'upsert', toResourceSyncPayload(row), dbInstance);
+  return true;
+}
+
+function upsertWebsiteResourceServicesSeed(dbInstance, resource) {
+  const desired = sortedIds(resource.serviceIds);
+  const existing = sortedIds(
+    dbInstance
+      .prepare('SELECT serviceId FROM resource_services WHERE resourceId = ? ORDER BY serviceId')
+      .all(resource.id)
+      .map((row) => row.serviceId)
+  );
+  if (JSON.stringify(existing) === JSON.stringify(desired)) return false;
+
+  dbInstance.prepare('DELETE FROM resource_services WHERE resourceId = ?').run(resource.id);
+  const insert = dbInstance.prepare('INSERT INTO resource_services (resourceId, serviceId) VALUES (?, ?)');
+  desired.forEach((serviceId) => insert.run(resource.id, serviceId));
+  appendSyncOutboxRecord(
+    'resource_services',
+    resource.id,
+    'upsert',
+    toResourceServicesSyncPayload(resource.id, desired, seedRowStamp(200)),
+    dbInstance
+  );
+  return true;
+}
+
+function upsertWebsiteAvailabilityRuleSeed(dbInstance, rule) {
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, resourceId, weekday, startTime, endTime, breaksJson, createdAt, updatedAt, deletedAt
+         FROM availability_rules
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(rule.id) || null;
+  if (availabilityRuleMatchesSeed(existing, rule)) return false;
+
+  const createdAt = normalizeText(existing?.createdAt, rule.createdAt);
+  dbInstance
+    .prepare(
+      `INSERT INTO availability_rules (id, orgId, resourceId, weekday, startTime, endTime, breaksJson, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         resourceId = excluded.resourceId,
+         weekday = excluded.weekday,
+         startTime = excluded.startTime,
+         endTime = excluded.endTime,
+         breaksJson = excluded.breaksJson,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      rule.id,
+      rule.orgId,
+      rule.resourceId,
+      rule.weekday,
+      rule.startTime,
+      rule.endTime,
+      rule.breaksJson,
+      createdAt,
+      rule.updatedAt,
+      rule.deletedAt
+    );
+  appendSyncOutboxRecord('availability_rules', rule.id, 'upsert', toAvailabilityRuleSyncPayload(rule), dbInstance);
+  return true;
+}
+
+function seedWebsiteValueOptions(dbInstance) {
+  const insert = dbInstance.prepare(`INSERT OR IGNORE INTO ${VALUE_TABLE} (value) VALUES (?)`);
+  WEBSITE_SERVICES.map(websiteValueOptionForService).forEach((value) => insert.run(value));
+}
+
+function seedWebsiteCatalog(dbInstance) {
+  if (!dbInstance) return;
+  const apply = dbInstance.transaction(() => {
+    WEBSITE_SERVICES.forEach((service, index) => upsertWebsiteServiceSeed(dbInstance, service, index));
+    WEBSITE_RESOURCES.forEach((resource, index) => {
+      upsertWebsiteResourceSeed(dbInstance, resource, index);
+      upsertWebsiteResourceServicesSeed(dbInstance, resource);
+      websiteAvailabilityRules(resource.id, index).forEach((rule) => upsertWebsiteAvailabilityRuleSeed(dbInstance, rule));
+    });
+    seedWebsiteValueOptions(dbInstance);
+  });
+  apply();
+}
+
+function websiteCatalogSummary(dbInstance) {
+  if (!dbInstance) return { services: 0, resources: 0, availabilityRules: 0, valueOptions: 0, pendingSync: 0 };
+  return {
+    services: Number(dbInstance.prepare('SELECT COUNT(*) AS count FROM services WHERE id IN (' + WEBSITE_SERVICES.map(() => '?').join(',') + ')').get(...WEBSITE_SERVICES.map((item) => item.id))?.count || 0),
+    resources: Number(dbInstance.prepare('SELECT COUNT(*) AS count FROM resources WHERE id IN (' + WEBSITE_RESOURCES.map(() => '?').join(',') + ')').get(...WEBSITE_RESOURCES.map((item) => item.id))?.count || 0),
+    availabilityRules: Number(
+      dbInstance
+        .prepare('SELECT COUNT(*) AS count FROM availability_rules WHERE id LIKE ?')
+        .get('website-rule-%')?.count || 0
+    ),
+    valueOptions: Number(
+      dbInstance
+        .prepare(`SELECT COUNT(*) AS count FROM ${VALUE_TABLE} WHERE value IN (${WEBSITE_SERVICES.map(() => '?').join(',')})`)
+        .get(...WEBSITE_SERVICES.map(websiteValueOptionForService))?.count || 0
+    ),
+    pendingSync: Number(
+      dbInstance
+        .prepare('SELECT COUNT(*) AS count FROM sync_outbox WHERE ackAt IS NULL')
+        .get()?.count || 0
+    )
+  };
+}
+
 function ensureSchema(dbInstance) {
   dbInstance.prepare(`
     CREATE TABLE IF NOT EXISTS vouchers (
@@ -1374,6 +1863,35 @@ function ensureSchema(dbInstance) {
 
   dbInstance
     .prepare(
+      `CREATE TABLE IF NOT EXISTS reservation_email_confirmations (
+        bookingId TEXT PRIMARY KEY,
+        customerEmail TEXT,
+        slotState TEXT,
+        sentAt TEXT NOT NULL,
+        responseJson TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`
+    )
+    .run();
+
+  dbInstance
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS reservation_apology_emails (
+        bookingId TEXT PRIMARY KEY,
+        customerEmail TEXT,
+        slotState TEXT,
+        alternativesJson TEXT,
+        sentAt TEXT NOT NULL,
+        responseJson TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      )`
+    )
+    .run();
+
+  dbInstance
+    .prepare(
       `CREATE TABLE IF NOT EXISTS sync_outbox (
         id TEXT PRIMARY KEY,
         entityType TEXT,
@@ -1437,6 +1955,12 @@ function ensureSchema(dbInstance) {
     .prepare('CREATE INDEX IF NOT EXISTS idx_voucher_redemptions_code ON voucher_redemptions(voucherCode)')
     .run();
   dbInstance
+    .prepare('CREATE INDEX IF NOT EXISTS idx_reservation_email_confirmations_sent ON reservation_email_confirmations(sentAt)')
+    .run();
+  dbInstance
+    .prepare('CREATE INDEX IF NOT EXISTS idx_reservation_apology_emails_sent ON reservation_apology_emails(sentAt)')
+    .run();
+  dbInstance
     .prepare('CREATE INDEX IF NOT EXISTS idx_sync_outbox_ack_created ON sync_outbox(ackAt, createdAt)')
     .run();
   dbInstance
@@ -1445,9 +1969,10 @@ function ensureSchema(dbInstance) {
   ensureSyncStateRowDb(dbInstance, new Date().toISOString());
   dbInstance
     .prepare(
-      "UPDATE services SET currency = 'EUR' WHERE currency IS NULL OR TRIM(currency) = '' OR UPPER(TRIM(currency)) = 'BGN'"
+      "UPDATE services SET currency = 'BGN' WHERE currency IS NULL OR TRIM(currency) = ''"
     )
     .run();
+  seedWebsiteCatalog(dbInstance);
 }
 
 function normalizeServiceInput(service, existing = null) {
@@ -1458,7 +1983,7 @@ function normalizeServiceInput(service, existing = null) {
   const name = normalizeText(service?.name, existing?.name || '');
   const durationMin = normalizePositiveInteger(service?.durationMin, existing?.durationMin ?? 30);
   const priceCents = normalizeInteger(service?.priceCents, existing?.priceCents ?? 0);
-  const currency = 'EUR';
+  const currency = normalizeCurrencyCode(service?.currency || existing?.currency, 'BGN');
   const isActive =
     service?.isActive === undefined
       ? normalizeFlag(existing?.isActive, 1)
@@ -2064,6 +2589,7 @@ const resource_services = {
     const dbInstance = getDb();
 
     if (dbInstance) {
+      const now = new Date().toISOString();
       const apply = dbInstance.transaction((targetResourceId, ids) => {
         dbInstance.prepare('DELETE FROM resource_services WHERE resourceId = ?').run(targetResourceId);
         const insert = dbInstance.prepare('INSERT INTO resource_services (resourceId, serviceId) VALUES (?, ?)');
@@ -2072,12 +2598,27 @@ const resource_services = {
         });
       });
       apply(rid, normalizedServiceIds);
+      appendSyncOutboxRecord(
+        'resource_services',
+        rid,
+        'upsert',
+        toResourceServicesSyncPayload(rid, normalizedServiceIds, now),
+        dbInstance
+      );
       return normalizedServiceIds;
     }
 
+    const now = new Date().toISOString();
     const state = readReposFallbackState();
     state.resourceServices[rid] = normalizedServiceIds;
     writeReposFallbackState(state);
+    appendSyncOutboxRecord(
+      'resource_services',
+      rid,
+      'upsert',
+      toResourceServicesSyncPayload(rid, normalizedServiceIds, now),
+      null
+    );
     return normalizedServiceIds;
   },
 
@@ -2202,7 +2743,15 @@ const availability = {
            LIMIT 1`
         )
         .get(normalized.id);
-      return mapAvailabilityRuleRow(saved);
+      const mapped = mapAvailabilityRuleRow(saved);
+      appendSyncOutboxRecord(
+        'availability_rules',
+        mapped.id,
+        'upsert',
+        toAvailabilityRuleSyncPayload(mapped),
+        dbInstance
+      );
+      return mapped;
     }
 
     const state = readReposFallbackState();
@@ -2224,7 +2773,9 @@ const availability = {
       state.availabilityRules.unshift(normalized);
     }
     writeReposFallbackState(state);
-    return mapAvailabilityRuleRow(normalized);
+    const mapped = mapAvailabilityRuleRow(normalized);
+    appendSyncOutboxRecord('availability_rules', mapped.id, 'upsert', toAvailabilityRuleSyncPayload(mapped), null);
+    return mapped;
   },
 
   deleteRule(id) {
@@ -2243,7 +2794,11 @@ const availability = {
              AND deletedAt IS NULL`
         )
         .run(now, now, targetId, normalizeOrgId());
-      return info.changes > 0;
+      const deleted = info.changes > 0;
+      if (deleted) {
+        appendSyncOutboxRecord('availability_rules', targetId, 'delete', { id: targetId, deletedAt: now }, dbInstance);
+      }
+      return deleted;
     }
 
     const state = readReposFallbackState();
@@ -2257,6 +2812,7 @@ const availability = {
       deletedAt: now
     };
     writeReposFallbackState(state);
+    appendSyncOutboxRecord('availability_rules', targetId, 'delete', { id: targetId, deletedAt: now }, null);
     return true;
   },
 
@@ -2363,7 +2919,7 @@ const availability = {
           normalized.deletedAt
         );
 
-      return dbInstance
+      const saved = dbInstance
         .prepare(
           `SELECT id, orgId, resourceId, date, isOff, startTime, endTime, note, createdAt, updatedAt, deletedAt
            FROM availability_exceptions
@@ -2371,6 +2927,14 @@ const availability = {
            LIMIT 1`
         )
         .get(normalized.id);
+      appendSyncOutboxRecord(
+        'availability_exceptions',
+        saved.id,
+        'upsert',
+        toAvailabilityExceptionSyncPayload(saved),
+        dbInstance
+      );
+      return saved;
     }
 
     const state = readReposFallbackState();
@@ -2392,6 +2956,13 @@ const availability = {
       state.availabilityExceptions.unshift(normalized);
     }
     writeReposFallbackState(state);
+    appendSyncOutboxRecord(
+      'availability_exceptions',
+      normalized.id,
+      'upsert',
+      toAvailabilityExceptionSyncPayload(normalized),
+      null
+    );
     return normalized;
   },
 
@@ -2411,7 +2982,11 @@ const availability = {
              AND deletedAt IS NULL`
         )
         .run(now, now, targetId, normalizeOrgId());
-      return info.changes > 0;
+      const deleted = info.changes > 0;
+      if (deleted) {
+        appendSyncOutboxRecord('availability_exceptions', targetId, 'delete', { id: targetId, deletedAt: now }, dbInstance);
+      }
+      return deleted;
     }
 
     const state = readReposFallbackState();
@@ -2425,6 +3000,7 @@ const availability = {
       deletedAt: now
     };
     writeReposFallbackState(state);
+    appendSyncOutboxRecord('availability_exceptions', targetId, 'delete', { id: targetId, deletedAt: now }, null);
     return true;
   }
 };
@@ -2820,6 +3396,16 @@ const bookings = {
     return true;
   },
 
+  checkSlot(id) {
+    return checkBookingSlotStatus(this.get(id));
+  },
+
+  checkSlots(ids = []) {
+    const wanted = new Set(uniqueIds(ids));
+    const rows = wanted.size > 0 ? uniqueIds(ids).map((id) => this.get(id)).filter(Boolean) : this.list({}, []);
+    return rows.map((booking) => checkBookingSlotStatus(booking));
+  },
+
   computeSlots({ serviceId, resourceId, from, to, slotStepMin = 15, includeEndAt = false } = {}) {
     const sid = normalizeId(serviceId);
     const rid = normalizeId(resourceId);
@@ -2859,6 +3445,530 @@ const bookings = {
   }
 };
 
+function isNonBlockingBookingStatus(status) {
+  const normalized = normalizeBookingStatus(status, '').toLowerCase();
+  return normalized === 'cancelled' || normalized === 'canceled';
+}
+
+function bookingConflictSummary(booking) {
+  if (!booking) return null;
+  const customer = customers.get(booking.customerId);
+  return {
+    id: booking.id,
+    startAt: booking.startAt,
+    endAt: booking.endAt,
+    status: booking.status,
+    customerName: customer?.name || booking.customerId || ''
+  };
+}
+
+function localDayRangeIso(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.valueOf())) return { from: '', to: '' };
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0);
+  return {
+    from: start.toISOString(),
+    to: end.toISOString()
+  };
+}
+
+function checkBookingSlotStatus(booking) {
+  if (!booking) {
+    return {
+      bookingId: '',
+      state: 'missing',
+      isFree: false,
+      reason: 'Reservation was not found',
+      conflicts: []
+    };
+  }
+
+  const bookingId = normalizeId(booking.id);
+  const serviceId = normalizeId(booking.serviceId);
+  const resourceId = normalizeId(booking.resourceId);
+  const startAt = normalizeIsoDateTime(booking.startAt, '');
+  const endAt = normalizeIsoDateTime(booking.endAt, '');
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+
+  if (!serviceId || !resourceId || !startAt || !endAt || Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
+    return {
+      bookingId,
+      state: 'invalid',
+      isFree: false,
+      reason: 'Reservation is missing service, resource, start, or end data',
+      conflicts: []
+    };
+  }
+
+  if (end <= start) {
+    return {
+      bookingId,
+      state: 'invalid',
+      isFree: false,
+      reason: 'Reservation end time must be after start time',
+      conflicts: []
+    };
+  }
+
+  if (!services.get(serviceId)) {
+    return {
+      bookingId,
+      state: 'invalid',
+      isFree: false,
+      reason: 'Reservation service was not found locally',
+      conflicts: []
+    };
+  }
+
+  if (!resources.get(resourceId)) {
+    return {
+      bookingId,
+      state: 'invalid',
+      isFree: false,
+      reason: 'Reservation resource was not found locally',
+      conflicts: []
+    };
+  }
+
+  const conflicts = bookings
+    .list({ from: startAt, to: endAt }, [resourceId])
+    .filter((item) => item.id !== bookingId && !isNonBlockingBookingStatus(item.status))
+    .map(bookingConflictSummary)
+    .filter(Boolean);
+
+  if (conflicts.length > 0) {
+    return {
+      bookingId,
+      state: 'conflict',
+      isFree: false,
+      reason: `${conflicts.length} overlapping reservation(s) found`,
+      conflicts
+    };
+  }
+
+  const dateKey = localDateKeyFromDate(start);
+  const dayRange = localDayRangeIso(start);
+  let rules = availability.listRules(resourceId);
+  if (!Array.isArray(rules) || rules.length === 0) {
+    rules = buildDefaultAvailabilityRules(resourceId);
+  }
+  const exceptions = availability.listExceptions(resourceId, dateKey, dateKey);
+  const sameDayBookings = bookings
+    .list(dayRange, [resourceId])
+    .filter((item) => item.id !== bookingId && !isNonBlockingBookingStatus(item.status));
+  const durationMin = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+  const slots = computeAvailableSlots({
+    rules,
+    exceptions,
+    bookings: sameDayBookings,
+    serviceDurationMin: durationMin,
+    dateRange: { from: dateKey, to: dateKey },
+    slotStepMin: 1,
+    includeEndAt: true
+  });
+  const requestedSlotExists = slots.some(
+    (slot) => normalizeIsoDateTime(slot?.startAt, '') === startAt && normalizeIsoDateTime(slot?.endAt, '') === endAt
+  );
+
+  if (!requestedSlotExists) {
+    return {
+      bookingId,
+      state: 'unavailable',
+      isFree: false,
+      reason: 'The requested time is outside the local availability calendar',
+      conflicts: []
+    };
+  }
+
+  return {
+    bookingId,
+    state: 'free',
+    isFree: true,
+    reason: 'Slot is free in the local calendar',
+    conflicts: []
+  };
+}
+
+function normalizeAlternativeSlots(slots = []) {
+  return (Array.isArray(slots) ? slots : [])
+    .map((slot) => {
+      const startAt = normalizeIsoDateTime(slot?.startAt, '');
+      const endAt = normalizeIsoDateTime(slot?.endAt, '');
+      if (!startAt || !endAt || startAt >= endAt) return null;
+      return {
+        startAt,
+        endAt,
+        serviceName: normalizeOptionalText(slot?.serviceName, null),
+        resourceName: normalizeOptionalText(slot?.resourceName, null)
+      };
+    })
+    .filter(Boolean);
+}
+
+function findAlternativeSlotsForBooking(booking, limit = 4) {
+  if (!booking) return [];
+  const serviceId = normalizeId(booking.serviceId);
+  const resourceId = normalizeId(booking.resourceId);
+  const startAt = normalizeIsoDateTime(booking.startAt, '');
+  const endAt = normalizeIsoDateTime(booking.endAt, '');
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  if (!serviceId || !resourceId || !startAt || !endAt || Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf()) || end <= start) {
+    return [];
+  }
+
+  const service = services.get(serviceId);
+  const resource = resources.get(resourceId);
+  if (!service || !resource) return [];
+
+  const requestedDate = localDateKeyFromDate(start);
+  const today = localDateKeyFromDate(new Date());
+  const fromDate = requestedDate && requestedDate > today ? requestedDate : today;
+  const toDate = addDaysToDateText(fromDate, 21);
+  if (!fromDate || !toDate) return [];
+
+  let rules = availability.listRules(resourceId);
+  if (!Array.isArray(rules) || rules.length === 0) {
+    rules = buildDefaultAvailabilityRules(resourceId);
+  }
+  const exceptions = availability.listExceptions(resourceId, fromDate, toDate);
+  const rangeEndDate = addDaysToDateText(toDate, 1);
+  const existingBookings = bookings
+    .list({ from: `${fromDate}T00:00:00.000Z`, to: `${rangeEndDate}T00:00:00.000Z` }, [resourceId])
+    .filter((item) => item.id !== booking.id && !isNonBlockingBookingStatus(item.status));
+  const durationMin = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+  const rawSlots = computeAvailableSlots({
+    rules,
+    exceptions,
+    bookings: existingBookings,
+    serviceDurationMin: durationMin,
+    dateRange: { from: fromDate, to: toDate },
+    slotStepMin: WEBSITE_SLOT_STEP_MIN,
+    includeEndAt: true
+  });
+
+  return normalizeAlternativeSlots(rawSlots)
+    .filter((slot) => slot.startAt !== startAt)
+    .slice(0, Math.max(1, normalizeLimit(limit, 4)))
+    .map((slot) => ({
+      ...slot,
+      serviceName: service.name,
+      resourceName: resource.name
+    }));
+}
+
+const reservationEmailConfirmations = {
+  list(ids = []) {
+    const wanted = uniqueIds(ids);
+    const dbInstance = getDb();
+    if (dbInstance) {
+      let query = `SELECT bookingId, customerEmail, slotState, sentAt, responseJson, createdAt, updatedAt
+                   FROM reservation_email_confirmations`;
+      const params = [];
+      if (wanted.length > 0) {
+        query += ` WHERE bookingId IN (${wanted.map(() => '?').join(',')})`;
+        params.push(...wanted);
+      }
+      query += ' ORDER BY sentAt DESC';
+      return dbInstance.prepare(query).all(...params).map((row) => ({
+        ...row,
+        response: parseSyncPayloadJson(row.responseJson)
+      }));
+    }
+
+    const state = readReposFallbackState();
+    const rows = Array.isArray(state.reservationEmailConfirmations) ? state.reservationEmailConfirmations : [];
+    return rows
+      .filter((row) => wanted.length === 0 || wanted.includes(row.bookingId))
+      .map((row) => ({ ...row, response: parseSyncPayloadJson(row.responseJson) }));
+  },
+
+  save({ bookingId, customerEmail, slotState, sentAt, response } = {}) {
+    const id = normalizeId(bookingId);
+    if (!id) throw new Error('bookingId is required');
+    const now = new Date().toISOString();
+    const row = {
+      bookingId: id,
+      customerEmail: normalizeOptionalText(customerEmail, null),
+      slotState: normalizeText(slotState, 'free'),
+      sentAt: normalizeIsoDateTime(sentAt, now),
+      responseJson: toSyncPayloadJson(response || {}),
+      createdAt: now,
+      updatedAt: now
+    };
+    const dbInstance = getDb();
+    if (dbInstance) {
+      const existing =
+        dbInstance
+          .prepare('SELECT createdAt FROM reservation_email_confirmations WHERE bookingId = ? LIMIT 1')
+          .get(row.bookingId) || null;
+      dbInstance
+        .prepare(
+          `INSERT INTO reservation_email_confirmations (bookingId, customerEmail, slotState, sentAt, responseJson, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(bookingId) DO UPDATE SET
+             customerEmail = excluded.customerEmail,
+             slotState = excluded.slotState,
+             sentAt = excluded.sentAt,
+             responseJson = excluded.responseJson,
+             updatedAt = excluded.updatedAt`
+        )
+        .run(
+          row.bookingId,
+          row.customerEmail,
+          row.slotState,
+          row.sentAt,
+          row.responseJson,
+          existing?.createdAt || row.createdAt,
+          row.updatedAt
+        );
+      return {
+        ...row,
+        createdAt: existing?.createdAt || row.createdAt,
+        response: response || {}
+      };
+    }
+
+    const state = readReposFallbackState();
+    const rows = Array.isArray(state.reservationEmailConfirmations) ? state.reservationEmailConfirmations : [];
+    const index = rows.findIndex((item) => item.bookingId === row.bookingId);
+    if (index >= 0) {
+      row.createdAt = rows[index].createdAt || row.createdAt;
+      rows[index] = row;
+    } else {
+      rows.unshift(row);
+    }
+    state.reservationEmailConfirmations = rows;
+    writeReposFallbackState(state);
+    return { ...row, response: response || {} };
+  }
+};
+
+const reservationApologyEmails = {
+  list(ids = []) {
+    const wanted = uniqueIds(ids);
+    const dbInstance = getDb();
+    if (dbInstance) {
+      let query = `SELECT bookingId, customerEmail, slotState, alternativesJson, sentAt, responseJson, createdAt, updatedAt
+                   FROM reservation_apology_emails`;
+      const params = [];
+      if (wanted.length > 0) {
+        query += ` WHERE bookingId IN (${wanted.map(() => '?').join(',')})`;
+        params.push(...wanted);
+      }
+      query += ' ORDER BY sentAt DESC';
+      return dbInstance.prepare(query).all(...params).map((row) => ({
+        ...row,
+        alternatives: normalizeAlternativeSlots(parseSyncPayloadJson(row.alternativesJson)?.items),
+        response: parseSyncPayloadJson(row.responseJson)
+      }));
+    }
+
+    const state = readReposFallbackState();
+    const rows = Array.isArray(state.reservationApologyEmails) ? state.reservationApologyEmails : [];
+    return rows
+      .filter((row) => wanted.length === 0 || wanted.includes(row.bookingId))
+      .map((row) => ({
+        ...row,
+        alternatives: normalizeAlternativeSlots(parseSyncPayloadJson(row.alternativesJson)?.items),
+        response: parseSyncPayloadJson(row.responseJson)
+      }));
+  },
+
+  save({ bookingId, customerEmail, slotState, alternatives = [], sentAt, response } = {}) {
+    const id = normalizeId(bookingId);
+    if (!id) throw new Error('bookingId is required');
+    const now = new Date().toISOString();
+    const row = {
+      bookingId: id,
+      customerEmail: normalizeOptionalText(customerEmail, null),
+      slotState: normalizeText(slotState, 'conflict'),
+      alternativesJson: toSyncPayloadJson({ items: normalizeAlternativeSlots(alternatives) }),
+      sentAt: normalizeIsoDateTime(sentAt, now),
+      responseJson: toSyncPayloadJson(response || {}),
+      createdAt: now,
+      updatedAt: now
+    };
+    const dbInstance = getDb();
+    if (dbInstance) {
+      const existing =
+        dbInstance
+          .prepare('SELECT createdAt FROM reservation_apology_emails WHERE bookingId = ? LIMIT 1')
+          .get(row.bookingId) || null;
+      dbInstance
+        .prepare(
+          `INSERT INTO reservation_apology_emails (bookingId, customerEmail, slotState, alternativesJson, sentAt, responseJson, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(bookingId) DO UPDATE SET
+             customerEmail = excluded.customerEmail,
+             slotState = excluded.slotState,
+             alternativesJson = excluded.alternativesJson,
+             sentAt = excluded.sentAt,
+             responseJson = excluded.responseJson,
+             updatedAt = excluded.updatedAt`
+        )
+        .run(
+          row.bookingId,
+          row.customerEmail,
+          row.slotState,
+          row.alternativesJson,
+          row.sentAt,
+          row.responseJson,
+          existing?.createdAt || row.createdAt,
+          row.updatedAt
+        );
+      return {
+        ...row,
+        createdAt: existing?.createdAt || row.createdAt,
+        alternatives: normalizeAlternativeSlots(alternatives),
+        response: response || {}
+      };
+    }
+
+    const state = readReposFallbackState();
+    const rows = Array.isArray(state.reservationApologyEmails) ? state.reservationApologyEmails : [];
+    const index = rows.findIndex((item) => item.bookingId === row.bookingId);
+    if (index >= 0) {
+      row.createdAt = rows[index].createdAt || row.createdAt;
+      rows[index] = row;
+    } else {
+      rows.unshift(row);
+    }
+    state.reservationApologyEmails = rows;
+    writeReposFallbackState(state);
+    return { ...row, alternatives: normalizeAlternativeSlots(alternatives), response: response || {} };
+  }
+};
+
+function prepareReservationApologyEmail(bookingId) {
+  const id = normalizeId(bookingId);
+  if (!id) throw new Error('bookingId is required');
+  const booking = bookings.get(id);
+  if (!booking) throw new Error('Reservation was not found locally');
+  const customer = customers.get(booking.customerId);
+  if (!customer?.email) throw new Error('Customer email is required before sending apology email');
+  const slot = checkBookingSlotStatus(booking);
+  if (slot.isFree) {
+    throw new Error('Slot is free. Use Confirm & Email instead.');
+  }
+  const alternatives = findAlternativeSlotsForBooking(booking, 4);
+  if (!alternatives.length) {
+    throw new Error('No alternative free slots found in the next 21 days.');
+  }
+  return {
+    bookingId: id,
+    customerEmail: customer.email,
+    customerName: customer.name || '',
+    slot,
+    alternatives
+  };
+}
+
+async function confirmReservationEmail(bookingId) {
+  const id = normalizeId(bookingId);
+  if (!id) throw new Error('bookingId is required');
+  const booking = bookings.get(id);
+  if (!booking) throw new Error('Reservation was not found locally');
+  const customer = customers.get(booking.customerId);
+  if (!customer?.email) throw new Error('Customer email is required before sending confirmation');
+
+  const slot = checkBookingSlotStatus(booking);
+  if (!slot.isFree) {
+    throw new Error(slot.reason || 'Slot is not free');
+  }
+
+  const settings = await readSettings();
+  const config = extractSyncSettings(settings || {});
+  if (!config.baseUrl) throw new Error('sync.baseUrl is required in settings.json');
+  if (!config.email || !config.password) throw new Error('sync.email and sync.password are required in settings.json');
+
+  const auth = await syncLoginRequest(config.baseUrl, {
+    email: config.email,
+    password: config.password,
+    orgId: config.orgId
+  });
+
+  const response = await requestJson(buildSyncUrl(config.baseUrl, `/reservations/${encodeURIComponent(id)}/confirm-email`), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${auth.token}` }
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || 'Customer confirmation email was not sent');
+  }
+
+  const data = response.data || {};
+  const saved = reservationEmailConfirmations.save({
+    bookingId: id,
+    customerEmail: customer.email,
+    slotState: slot.state,
+    sentAt: data.sentAt || new Date().toISOString(),
+    response: data
+  });
+
+  return {
+    bookingId: id,
+    customerEmail: customer.email,
+    slot,
+    confirmation: saved,
+    response: data
+  };
+}
+
+async function sendReservationApologyEmail(bookingId, alternativesInput = []) {
+  const id = normalizeId(bookingId);
+  if (!id) throw new Error('bookingId is required');
+  const booking = bookings.get(id);
+  if (!booking) throw new Error('Reservation was not found locally');
+  const customer = customers.get(booking.customerId);
+  if (!customer?.email) throw new Error('Customer email is required before sending apology email');
+
+  const prepared = prepareReservationApologyEmail(id);
+  const providedAlternatives = normalizeAlternativeSlots(alternativesInput);
+  const alternatives = providedAlternatives.length > 0 ? providedAlternatives : prepared.alternatives;
+  if (!alternatives.length) {
+    throw new Error('At least one alternative free slot is required before sending apology email');
+  }
+
+  const settings = await readSettings();
+  const config = extractSyncSettings(settings || {});
+  if (!config.baseUrl) throw new Error('sync.baseUrl is required in settings.json');
+  if (!config.email || !config.password) throw new Error('sync.email and sync.password are required in settings.json');
+
+  const auth = await syncLoginRequest(config.baseUrl, {
+    email: config.email,
+    password: config.password,
+    orgId: config.orgId
+  });
+
+  const response = await requestJson(buildSyncUrl(config.baseUrl, `/reservations/${encodeURIComponent(id)}/apology-email`), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${auth.token}` },
+    body: { alternatives }
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || 'Customer apology email was not sent');
+  }
+
+  const data = response.data || {};
+  const saved = reservationApologyEmails.save({
+    bookingId: id,
+    customerEmail: customer.email,
+    slotState: prepared.slot.state,
+    alternatives,
+    sentAt: data.sentAt || new Date().toISOString(),
+    response: data
+  });
+
+  return {
+    bookingId: id,
+    customerEmail: customer.email,
+    slot: prepared.slot,
+    alternatives,
+    apology: saved,
+    response: data
+  };
+}
 
 function normalizeSyncBaseUrl(value) {
   const raw = normalizeText(value, '');
@@ -2893,6 +4003,34 @@ function buildSyncUrl(baseUrl, pathname, searchParams = null) {
   return url.toString();
 }
 
+function summarizeSyncDetails(details) {
+  if (!details || typeof details !== 'object') return '';
+  const provider = normalizeText(details.provider, '');
+  const reason = normalizeText(details.reason, '');
+  const failedKinds = Array.isArray(details.failedKinds)
+    ? details.failedKinds.map((item) => normalizeText(item, '')).filter(Boolean)
+    : [];
+  const errors = Array.isArray(details.errors)
+    ? details.errors
+        .map((item) => normalizeText(item?.message || item, ''))
+        .filter(Boolean)
+    : [];
+
+  if (provider || failedKinds.length || errors.length || reason) {
+    const providerText = provider ? provider.toUpperCase() : 'email provider';
+    const kindText = failedKinds.length ? ` (${failedKinds.join(', ')})` : '';
+    const uniqueErrors = Array.from(new Set(errors));
+    const connectionRefused = uniqueErrors.find((message) => /ECONNREFUSED/i.test(message));
+    if (connectionRefused) {
+      return `Email delivery failed via ${providerText}${kindText}: SMTP connection was refused. Start a local SMTP catcher on port 1025 for testing, or configure real SMTP/Resend credentials in the AdventureWebsite API.`;
+    }
+    const errorText = uniqueErrors.length ? uniqueErrors.join('; ') : reason;
+    return `Email delivery failed via ${providerText}${kindText}${errorText ? `: ${errorText}` : ''}`;
+  }
+
+  return '';
+}
+
 function buildSyncErrorMessage(response, data, fallback = '') {
   const parts = [];
   const status = Number(response?.status || 0);
@@ -2923,6 +4061,12 @@ function buildSyncErrorMessage(response, data, fallback = '') {
   }
 
   if (data?.details && typeof data.details === 'object') {
+    const summary = summarizeSyncDetails(data.details);
+    if (summary) {
+      parts.push(summary);
+      const combined = parts.filter(Boolean).join(' | ');
+      return combined || fallback || 'Request failed';
+    }
     try {
       const details = JSON.stringify(data.details);
       if (details && details !== '{}') {
@@ -2933,6 +4077,30 @@ function buildSyncErrorMessage(response, data, fallback = '') {
 
   const combined = parts.filter(Boolean).join(' | ');
   return combined || fallback || 'Request failed';
+}
+
+function describeSyncNetworkError(url, error) {
+  let target = String(url || '');
+  try {
+    const parsed = new URL(target);
+    target = `${parsed.origin}${parsed.pathname}`;
+  } catch {}
+
+  const code = normalizeText(error?.cause?.code || error?.code || '', '');
+  const causeMessage = normalizeText(error?.cause?.message || error?.message || '', '');
+  const codeText = code ? ` ${code}` : '';
+  const messageText = causeMessage ? `: ${causeMessage}` : '';
+  let hint = 'Check sync.baseUrl and make sure the AdventureWebsite API is running.';
+
+  if (code === 'ECONNREFUSED') {
+    hint = 'Nothing is listening at that address. Start the AdventureWebsite API or update sync.baseUrl.';
+  } else if (code === 'ENOTFOUND') {
+    hint = 'The host name could not be resolved. Check sync.baseUrl.';
+  } else if (code === 'DEPTH_ZERO_SELF_SIGNED_CERT' || code === 'SELF_SIGNED_CERT_IN_CHAIN') {
+    hint = 'The HTTPS certificate is not trusted by Electron.';
+  }
+
+  return `Network error${codeText} while connecting to ${target}${messageText}. ${hint}`;
 }
 
 async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
@@ -2951,7 +4119,13 @@ async function requestJson(url, { method = 'GET', headers = {}, body } = {}) {
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(url, options);
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (err) {
+    throw new Error(describeSyncNetworkError(url, err));
+  }
+
   const text = await response.text();
   let data = null;
   if (text) {
@@ -3017,6 +4191,26 @@ function updateSyncStateRow(dbInstance, { lastPullToken = '', updatedAt = '' } =
     updatedAt: stamp
   };
   writeReposFallbackState(state);
+}
+
+function countLocalActiveBookings(dbInstance) {
+  if (dbInstance) {
+    return Number(
+      dbInstance
+        .prepare(
+          `SELECT COUNT(1) AS count
+           FROM bookings
+           WHERE orgId = ?
+             AND COALESCE(TRIM(deletedAt), '') = ''`
+        )
+        .get(normalizeOrgId())?.count || 0
+    );
+  }
+
+  const state = readReposFallbackState();
+  return (Array.isArray(state.bookings) ? state.bookings : []).filter(
+    (item) => item?.orgId === normalizeOrgId() && !normalizeDeletedAt(item?.deletedAt, null)
+  ).length;
 }
 
 function listPendingOutboxRows(dbInstance, limit = 200) {
@@ -3239,7 +4433,7 @@ function applyRemoteServiceChangeDb(dbInstance, op, payload, entityId) {
     name: normalizeText(payload?.name, existing?.name || ''),
     durationMin: normalizePositiveInteger(payload?.durationMin, existing?.durationMin ?? 30),
     priceCents: normalizeInteger(payload?.priceCents, existing?.priceCents ?? 0),
-    currency: normalizeText(payload?.currency, existing?.currency || 'EUR'),
+    currency: normalizeCurrencyCode(payload?.currency || existing?.currency, 'BGN'),
     isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
     createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
     updatedAt: normalizeText(payload?.updatedAt, now),
@@ -3300,7 +4494,7 @@ function applyRemoteServiceChangeState(state, op, payload, entityId) {
     name: normalizeText(payload?.name, existing?.name || ''),
     durationMin: normalizePositiveInteger(payload?.durationMin, existing?.durationMin ?? 30),
     priceCents: normalizeInteger(payload?.priceCents, existing?.priceCents ?? 0),
-    currency: normalizeText(payload?.currency, existing?.currency || 'EUR'),
+    currency: normalizeCurrencyCode(payload?.currency || existing?.currency, 'BGN'),
     isActive: normalizeFlag(payload?.isActive, existing?.isActive ?? 1),
     createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
     updatedAt: normalizeText(payload?.updatedAt, now),
@@ -3410,6 +4604,272 @@ function applyRemoteResourceChangeState(state, op, payload, entityId) {
     items.unshift(record);
   }
   state.resources = items;
+  return true;
+}
+
+function applyRemoteResourceServicesChangeDb(dbInstance, op, payload, entityId) {
+  const resourceId = normalizeId(payload?.resourceId || payload?.id || entityId);
+  if (!resourceId) return false;
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const serviceIds = uniqueIds(
+    Array.isArray(payload?.serviceIds)
+      ? payload.serviceIds
+      : Array.isArray(payload?.services)
+        ? payload.services
+        : payload?.serviceId
+          ? [payload.serviceId]
+          : []
+  );
+
+  const apply = dbInstance.transaction((rid, ids) => {
+    dbInstance.prepare('DELETE FROM resource_services WHERE resourceId = ?').run(rid);
+    if (normalizedOp === 'delete') return;
+    const insert = dbInstance.prepare('INSERT INTO resource_services (resourceId, serviceId) VALUES (?, ?)');
+    ids.forEach((serviceId) => {
+      insert.run(rid, serviceId);
+    });
+  });
+  apply(resourceId, serviceIds);
+  return true;
+}
+
+function applyRemoteResourceServicesChangeState(state, op, payload, entityId) {
+  const resourceId = normalizeId(payload?.resourceId || payload?.id || entityId);
+  if (!resourceId) return false;
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  if (!state.resourceServices || typeof state.resourceServices !== 'object' || Array.isArray(state.resourceServices)) {
+    state.resourceServices = {};
+  }
+  if (normalizedOp === 'delete') {
+    delete state.resourceServices[resourceId];
+    return true;
+  }
+  state.resourceServices[resourceId] = uniqueIds(
+    Array.isArray(payload?.serviceIds)
+      ? payload.serviceIds
+      : Array.isArray(payload?.services)
+        ? payload.services
+        : payload?.serviceId
+          ? [payload.serviceId]
+          : []
+  );
+  return true;
+}
+
+function normalizeRemoteAvailabilityRule(payload, entityId, existing = null) {
+  const now = new Date().toISOString();
+  const id = normalizeId(payload?.id || entityId || existing?.id);
+  const resourceId = normalizeId(payload?.resourceId || existing?.resourceId);
+  const weekday = normalizeWeekday(payload?.weekday ?? existing?.weekday, -1);
+  const startTime = normalizeTimeText(payload?.startTime ?? existing?.startTime, '');
+  const endTime = normalizeTimeText(payload?.endTime ?? existing?.endTime, '');
+  if (!id || !resourceId || weekday < 0 || !startTime || !endTime || startTime >= endTime) return null;
+  const breaks = parseBreaksJsonArray(payload?.breaks ?? payload?.breaksJson ?? existing?.breaksJson ?? '[]')
+    .map((item) => ({
+      startTime: normalizeTimeText(item?.startTime ?? item?.start ?? '', ''),
+      endTime: normalizeTimeText(item?.endTime ?? item?.end ?? '', '')
+    }))
+    .filter((item) => item.startTime && item.endTime);
+
+  return {
+    id,
+    orgId: normalizeOrgId(),
+    resourceId,
+    weekday,
+    startTime,
+    endTime,
+    breaksJson: JSON.stringify(breaks),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+}
+
+function applyRemoteAvailabilityRuleChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+
+  if (normalizedOp === 'delete') {
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE availability_rules SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, resourceId, weekday, startTime, endTime, breaksJson, createdAt, updatedAt, deletedAt
+         FROM availability_rules
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  const record = normalizeRemoteAvailabilityRule(payload, id, existing);
+  if (!record) return false;
+  dbInstance
+    .prepare(
+      `INSERT INTO availability_rules (id, orgId, resourceId, weekday, startTime, endTime, breaksJson, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         resourceId = excluded.resourceId,
+         weekday = excluded.weekday,
+         startTime = excluded.startTime,
+         endTime = excluded.endTime,
+         breaksJson = excluded.breaksJson,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      record.id,
+      record.orgId,
+      record.resourceId,
+      record.weekday,
+      record.startTime,
+      record.endTime,
+      record.breaksJson,
+      record.createdAt,
+      record.updatedAt,
+      record.deletedAt
+    );
+  return true;
+}
+
+function applyRemoteAvailabilityRuleChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.availabilityRules) ? state.availabilityRules : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    items[index] = { ...existing, updatedAt: normalizeText(payload?.updatedAt, now), deletedAt: normalizeDeletedAt(payload?.deletedAt, now) };
+    state.availabilityRules = items;
+    return true;
+  }
+
+  const record = normalizeRemoteAvailabilityRule(payload, id, existing);
+  if (!record) return false;
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.availabilityRules = items;
+  return true;
+}
+
+function normalizeRemoteAvailabilityException(payload, entityId, existing = null) {
+  const now = new Date().toISOString();
+  const id = normalizeId(payload?.id || entityId || existing?.id);
+  const resourceId = normalizeId(payload?.resourceId || existing?.resourceId);
+  const date = normalizeDateText(payload?.date ?? existing?.date, '');
+  const isOff = normalizeFlag(payload?.isOff ?? existing?.isOff, 1);
+  const startTime = isOff ? null : normalizeTimeText(payload?.startTime ?? existing?.startTime, '');
+  const endTime = isOff ? null : normalizeTimeText(payload?.endTime ?? existing?.endTime, '');
+  if (!id || !resourceId || !date) return null;
+  if (!isOff && (!startTime || !endTime || startTime >= endTime)) return null;
+
+  return {
+    id,
+    orgId: normalizeOrgId(),
+    resourceId,
+    date,
+    isOff,
+    startTime,
+    endTime,
+    note: normalizeOptionalText(payload?.note, existing?.note || null),
+    createdAt: normalizeText(payload?.createdAt, existing?.createdAt || now),
+    updatedAt: normalizeText(payload?.updatedAt, now),
+    deletedAt: normalizeDeletedAt(payload?.deletedAt, existing?.deletedAt || null)
+  };
+}
+
+function applyRemoteAvailabilityExceptionChangeDb(dbInstance, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+
+  if (normalizedOp === 'delete') {
+    const deletedAt = normalizeDeletedAt(payload?.deletedAt, now);
+    const updatedAt = normalizeText(payload?.updatedAt, deletedAt);
+    const info = dbInstance.prepare('UPDATE availability_exceptions SET deletedAt = ?, updatedAt = ? WHERE id = ?').run(deletedAt, updatedAt, id);
+    return info.changes > 0;
+  }
+
+  const existing =
+    dbInstance
+      .prepare(
+        `SELECT id, orgId, resourceId, date, isOff, startTime, endTime, note, createdAt, updatedAt, deletedAt
+         FROM availability_exceptions
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) || null;
+  const record = normalizeRemoteAvailabilityException(payload, id, existing);
+  if (!record) return false;
+  dbInstance
+    .prepare(
+      `INSERT INTO availability_exceptions (id, orgId, resourceId, date, isOff, startTime, endTime, note, createdAt, updatedAt, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         orgId = excluded.orgId,
+         resourceId = excluded.resourceId,
+         date = excluded.date,
+         isOff = excluded.isOff,
+         startTime = excluded.startTime,
+         endTime = excluded.endTime,
+         note = excluded.note,
+         updatedAt = excluded.updatedAt,
+         deletedAt = excluded.deletedAt`
+    )
+    .run(
+      record.id,
+      record.orgId,
+      record.resourceId,
+      record.date,
+      record.isOff,
+      record.startTime,
+      record.endTime,
+      record.note,
+      record.createdAt,
+      record.updatedAt,
+      record.deletedAt
+    );
+  return true;
+}
+
+function applyRemoteAvailabilityExceptionChangeState(state, op, payload, entityId) {
+  const id = normalizeId(payload?.id || entityId);
+  if (!id) return false;
+  const now = new Date().toISOString();
+  const normalizedOp = normalizeText(op, '').toLowerCase();
+  const items = Array.isArray(state.availabilityExceptions) ? state.availabilityExceptions : [];
+  const index = items.findIndex((item) => item.id === id);
+  const existing = index >= 0 ? items[index] : null;
+
+  if (normalizedOp === 'delete') {
+    if (!existing) return false;
+    items[index] = { ...existing, updatedAt: normalizeText(payload?.updatedAt, now), deletedAt: normalizeDeletedAt(payload?.deletedAt, now) };
+    state.availabilityExceptions = items;
+    return true;
+  }
+
+  const record = normalizeRemoteAvailabilityException(payload, id, existing);
+  if (!record) return false;
+  if (index >= 0) {
+    items[index] = record;
+  } else {
+    items.unshift(record);
+  }
+  state.availabilityExceptions = items;
   return true;
 }
 
@@ -3537,11 +4997,13 @@ function applyRemoteBookingChangeDb(dbInstance, op, payload, entityId) {
     return info.changes > 0;
   }
 
+  const serviceId = normalizeId(payload?.serviceId || existing?.serviceId);
+  const resourceId = normalizeId(payload?.resourceId || existing?.resourceId) || websiteResourceIdForService(serviceId);
   const merged = {
     id,
     orgId: normalizeOrgId(),
-    serviceId: normalizeId(payload?.serviceId || existing?.serviceId),
-    resourceId: normalizeId(payload?.resourceId || existing?.resourceId),
+    serviceId,
+    resourceId,
     customerId: normalizeId(payload?.customerId || existing?.customerId),
     startAt: normalizeIsoDateTime(payload?.startAt ?? existing?.startAt, ''),
     endAt: normalizeIsoDateTime(payload?.endAt ?? existing?.endAt, ''),
@@ -3630,11 +5092,13 @@ function applyRemoteBookingChangeState(state, op, payload, entityId) {
     return true;
   }
 
+  const serviceId = normalizeId(payload?.serviceId || existing?.serviceId);
+  const resourceId = normalizeId(payload?.resourceId || existing?.resourceId) || websiteResourceIdForService(serviceId);
   const record = {
     id,
     orgId: normalizeOrgId(),
-    serviceId: normalizeId(payload?.serviceId || existing?.serviceId),
-    resourceId: normalizeId(payload?.resourceId || existing?.resourceId),
+    serviceId,
+    resourceId,
     customerId: normalizeId(payload?.customerId || existing?.customerId),
     startAt: normalizeIsoDateTime(payload?.startAt ?? existing?.startAt, ''),
     endAt: normalizeIsoDateTime(payload?.endAt ?? existing?.endAt, ''),
@@ -3788,6 +5252,12 @@ async function applyRemoteChanges(changes, dbInstance) {
         didApply = applyRemoteServiceChangeDb(dbInstance, op, payload, entityId);
       } else if (entityType === 'resources' || entityType === 'resource') {
         didApply = applyRemoteResourceChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'resource_services' || entityType === 'resource_service') {
+        didApply = applyRemoteResourceServicesChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'availability_rules' || entityType === 'availability_rule') {
+        didApply = applyRemoteAvailabilityRuleChangeDb(dbInstance, op, payload, entityId);
+      } else if (entityType === 'availability_exceptions' || entityType === 'availability_exception') {
+        didApply = applyRemoteAvailabilityExceptionChangeDb(dbInstance, op, payload, entityId);
       } else if (entityType === 'customers' || entityType === 'customer') {
         didApply = applyRemoteCustomerChangeDb(dbInstance, op, payload, entityId);
       } else if (entityType === 'bookings' || entityType === 'booking') {
@@ -3798,6 +5268,12 @@ async function applyRemoteChanges(changes, dbInstance) {
         didApply = applyRemoteServiceChangeState(state, op, payload, entityId);
       } else if (entityType === 'resources' || entityType === 'resource') {
         didApply = applyRemoteResourceChangeState(state, op, payload, entityId);
+      } else if (entityType === 'resource_services' || entityType === 'resource_service') {
+        didApply = applyRemoteResourceServicesChangeState(state, op, payload, entityId);
+      } else if (entityType === 'availability_rules' || entityType === 'availability_rule') {
+        didApply = applyRemoteAvailabilityRuleChangeState(state, op, payload, entityId);
+      } else if (entityType === 'availability_exceptions' || entityType === 'availability_exception') {
+        didApply = applyRemoteAvailabilityExceptionChangeState(state, op, payload, entityId);
       } else if (entityType === 'customers' || entityType === 'customer') {
         didApply = applyRemoteCustomerChangeState(state, op, payload, entityId);
       } else if (entityType === 'bookings' || entityType === 'booking') {
@@ -3938,10 +5414,10 @@ const sync = {
       const settings = await readSettings();
       const config = extractSyncSettings(settings || {});
       if (!config.baseUrl) {
-        return { ok: false, error: 'syncBaseUrl is required in settings.json' };
+        return { ok: false, error: 'sync.baseUrl is required in settings.json' };
       }
       if (!config.email || !config.password) {
-        return { ok: false, error: 'syncEmail and syncPassword are required in settings.json' };
+        return { ok: false, error: 'sync.email and sync.password are required in settings.json' };
       }
 
       const auth = await syncLoginRequest(config.baseUrl, {
@@ -3955,6 +5431,7 @@ const sync = {
       const syncState = getSyncStateRow(dbInstance);
       let sinceToken = Number.parseInt(syncState.lastPullToken || '0', 10);
       if (!Number.isFinite(sinceToken) || sinceToken < 0) sinceToken = 0;
+      const storedSinceToken = sinceToken;
 
       const pending = listPendingOutboxRows(dbInstance, 200);
       const pendingIds = pending.map((row) => row.id).filter(Boolean);
@@ -4038,12 +5515,18 @@ const sync = {
       }
 
       const pullLimit = 500;
-      let latestToken = sinceToken;
+      let pullSinceToken = sinceToken;
+      if (storedSinceToken > 0 && countLocalActiveBookings(dbInstance) === 0) {
+        pullSinceToken = 0;
+        summary.pulled.backfilledFromToken = String(storedSinceToken);
+      }
+
+      let latestToken = storedSinceToken;
       let totalApplied = 0;
       let guard = 0;
       while (guard < 20) {
         const pullResponse = await requestJson(
-          buildSyncUrl(config.baseUrl, '/sync/pull', { since: sinceToken, limit: pullLimit }),
+          buildSyncUrl(config.baseUrl, '/sync/pull', { since: pullSinceToken, limit: pullLimit }),
           { method: 'GET', headers: { Authorization: `Bearer ${token}` } }
         );
         if (!pullResponse?.ok) {
@@ -4066,7 +5549,7 @@ const sync = {
           }
           break;
         }
-        sinceToken = lastToken || sinceToken;
+        pullSinceToken = lastToken || pullSinceToken;
         guard += 1;
       }
 
@@ -5045,9 +6528,14 @@ function validateVoucherCodePayload(code) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1180,
-    height: 720,
+    width: 1280,
+    height: 820,
+    minWidth: 1040,
+    minHeight: 680,
     title: 'LN software',
+    backgroundColor: '#0f172a',
+    show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -5057,6 +6545,9 @@ function createWindow() {
 
   win.removeMenu();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.once('ready-to-show', () => {
+    win.show();
+  });
 }
 
 ipcMain.handle('get-templates', () => getTemplateIds());
@@ -5459,9 +6950,63 @@ ipcMain.handle('bookings:delete', async (_event, id) => {
   }
 });
 
+ipcMain.handle('bookings:checkSlots', async (_event, ids = []) => {
+  try {
+    const data = bookings.checkSlots(ids || []);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('bookings:computeSlots', async (_event, payload = {}) => {
   try {
     const data = bookings.computeSlots(payload || {});
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reservations:listEmailConfirmations', async (_event, ids = []) => {
+  try {
+    const data = reservationEmailConfirmations.list(ids || []);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reservations:listApologyEmails', async (_event, ids = []) => {
+  try {
+    const data = reservationApologyEmails.list(ids || []);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reservations:prepareApologyEmail', async (_event, bookingId) => {
+  try {
+    const data = prepareReservationApologyEmail(bookingId);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reservations:confirmEmail', async (_event, bookingId) => {
+  try {
+    const data = await confirmReservationEmail(bookingId);
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reservations:sendApologyEmail', async (_event, bookingId, alternatives = []) => {
+  try {
+    const data = await sendReservationApologyEmail(bookingId, alternatives || []);
     return { ok: true, data };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -5790,7 +7335,22 @@ async function runVoucherExpiryCheckSafely() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (process.argv.includes('--seed-website-catalog')) {
+    const dbInstance = getDb();
+    console.log(JSON.stringify(websiteCatalogSummary(dbInstance), null, 2));
+    app.quit();
+    return;
+  }
+
+  if (process.argv.includes('--sync-now')) {
+    getDb();
+    const result = await sync.run();
+    console.log(JSON.stringify(result, null, 2));
+    app.quit();
+    return;
+  }
+
   getTemplateIds();
   createWindow();
   runVoucherExpiryCheckSafely();

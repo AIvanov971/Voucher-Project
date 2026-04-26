@@ -22,12 +22,13 @@
         <button id="navServices" class="nav-btn">Services</button>
         <button id="navResources" class="nav-btn">Resources</button>
         <button id="navSchedule" class="nav-btn">Schedule</button>
+        <button id="navReservations" class="nav-btn">Reservations</button>
         <button id="navBuilder" class="nav-btn">Template Builder</button>
       </div>
       <div class="topbar-right">
         <div class="version-block">
-          <span id="versionTag" class="muted version-tag">v1.0.0-test</span>
-          <span id="versionNote" class="version-note">Test version – feedback welcome</span>
+          <span id="versionTag" class="muted version-tag">v1.0.0</span>
+          <span id="versionNote" class="version-note">Ready for use</span>
         </div>
         <div id="syncIndicator" class="badge sync">Sync: ...</div>
         <button id="btnSyncNow" class="ghost-btn" aria-label="Run sync">Sync</button>
@@ -369,6 +370,61 @@
       </section>
     </section>
 
+    <section id="view-reservations" style="display: none;">
+      <header class="app-header">
+        <div>
+          <h1>Reservations</h1>
+          <p>Website reservations pulled from the AdventureWebsite sync database.</p>
+        </div>
+      </header>
+      <section class="panel reservation-panel">
+        <div class="reservations-toolbar">
+          <input id="reservationsSearch" type="text" placeholder="Search customer, service, voucher, note..." />
+          <select id="reservationsSourceFilter" aria-label="Reservation source">
+            <option value="public">Website only</option>
+            <option value="all">All sources</option>
+            <option value="desktop">Desktop</option>
+            <option value="sync">Sync</option>
+          </select>
+          <select id="reservationsStatusFilter" aria-label="Reservation status">
+            <option value="active">Active</option>
+            <option value="all">All statuses</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <button id="reservationsRefreshBtn" type="button">Refresh</button>
+          <button id="reservationsSyncBtn" type="button" class="primary">Sync Now</button>
+        </div>
+        <div class="reservation-summary">
+          <div>
+            <strong id="reservationsCount">0 reservations</strong>
+            <span id="reservationsHint">Run sync to pull the latest website reservations.</span>
+          </div>
+          <div id="reservationsStatus" class="status"></div>
+        </div>
+        <div class="table-wrap reservations-table-wrap">
+          <table class="saved-table reservations-table">
+            <thead>
+              <tr>
+                <th>Date / Time</th>
+                <th>Customer</th>
+                <th>Service</th>
+                <th>Resource</th>
+                <th>Slot</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Voucher</th>
+                <th>Note</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="reservationsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
     <div id="serviceModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
       <div id="serviceModalBackdrop" class="modal-backdrop"></div>
       <div class="modal-content" style="max-width:520px;">
@@ -387,12 +443,15 @@
             <input id="serviceDurationInput" type="number" min="1" step="1" value="30" />
           </label>
           <label>
-            <span>Price (EUR)</span>
+            <span>Price</span>
             <input id="servicePriceInput" type="text" inputmode="decimal" placeholder="0.00" value="0.00" />
           </label>
           <label>
             <span>Currency</span>
-            <input id="serviceCurrencyInput" type="text" maxlength="8" value="EUR" readonly />
+            <select id="serviceCurrencyInput">
+              <option value="BGN">BGN</option>
+              <option value="EUR">EUR</option>
+            </select>
           </label>
           <label class="inline-check">
             <input id="serviceActiveInput" type="checkbox" checked />

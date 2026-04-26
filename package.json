@@ -2,27 +2,40 @@
   "name": "LNvoucher-maker",
   "version": "1.0.0",
   "description": "Offline voucher PDF generator",
+  "author": "LN software",
   "main": "main.js",
   "scripts": {
     "start": "node scripts/run-electron.js .",
     "test:smoke": "node scripts/run-electron.js tests/smoke.js",
-    "pack": "electron-builder --dir --win",
-    "dist": "electron-builder --win"
+    "seed:website": "node scripts/run-electron.js . --seed-website-catalog",
+    "sync:now": "node scripts/run-electron.js . --sync-now",
+    "rebuild:electron": "electron-builder install-app-deps",
+    "pack": "electron-builder --dir",
+    "pack:mac:arm": "electron-builder --dir --mac --arm64",
+    "pack:win": "electron-builder --dir --win --x64",
+    "dist": "electron-builder --mac --arm64 --win --x64",
+    "dist:mac:arm": "electron-builder --mac --arm64",
+    "dist:win": "electron-builder --win --x64"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "qrcode": "^1.5.3"
   },
   "devDependencies": {
-
     "electron": "^39.8.5",
     "electron-builder": "^26.8.1"
-
   },
   "build": {
     "appId": "com.voucher.maker",
     "productName": "LN software",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "npmRebuild": true,
     "directories": {
+      "buildResources": "build",
       "output": "dist"
     },
     "files": [
@@ -40,9 +53,56 @@
         "to": "templates"
       }
     ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
     "win": {
-      "icon": "assets/app-icon.ico",
-      "signAndEditExecutable": false
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "artifactName": "${productName}-${version}-win-${arch}-setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-win-${arch}-portable.${ext}"
     }
   }
 }
