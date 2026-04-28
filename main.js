@@ -109,6 +109,7 @@ const csvImportPreviewStore = new Map();
 const VOUCHER_EXPIRY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const APP_PRODUCT_NAME = 'LN software';
 const LEGACY_APP_NAME = 'LNvoucher-maker';
+const PRODUCTION_SYNC_BASE_URL = 'https://adventure-website-api.vercel.app';
 const FIXED_EUR_RATE = 1.95583;
 const WEBSITE_SLOT_STEP_MIN = 7 * 60;
 const WEBSITE_CATALOG_SEEDED_AT = '2026-04-22T00:00:00.000Z';
@@ -203,7 +204,12 @@ function settingsFilePathForAppName(appName) {
 
 function alternateSettingsFilePaths() {
   const current = settingsFilePath();
-  const candidates = [settingsFilePathForAppName(APP_PRODUCT_NAME), settingsFilePathForAppName(LEGACY_APP_NAME)];
+  const candidates = [
+    settingsFilePathForAppName(APP_PRODUCT_NAME),
+    settingsFilePathForAppName(LEGACY_APP_NAME),
+    path.join(path.dirname(app.getPath('exe')), 'settings.json'),
+    path.join(process.resourcesPath || '', 'settings.json')
+  ];
   return candidates.filter((file, index) => file !== current && candidates.indexOf(file) === index);
 }
 
@@ -228,7 +234,7 @@ function mergeSettingsWithSyncFallback(primary, fallback) {
     primary?.sync && typeof primary.sync === 'object' && !Array.isArray(primary.sync) ? primary.sync : {};
   const fallbackSync =
     fallback?.sync && typeof fallback.sync === 'object' && !Array.isArray(fallback.sync) ? fallback.sync : {};
-  const primaryConfig = extractSyncSettings(primary || {});
+  const primaryConfig = extractExplicitSyncSettings(primary || {});
   return {
     ...(fallback || {}),
     ...(primary || {}),
@@ -3880,7 +3886,7 @@ async function confirmReservationEmail(bookingId) {
 
   const settings = await readSettings();
   const config = extractSyncSettings(settings || {});
-  if (!config.baseUrl) throw new Error('sync.baseUrl is required in settings.json');
+  if (!config.baseUrl) throw new Error('sync.baseUrl (or sync.URL) is required in settings.json');
   if (!config.email || !config.password) throw new Error('sync.email and sync.password are required in settings.json');
 
   const auth = await syncLoginRequest(config.baseUrl, {
@@ -3932,7 +3938,7 @@ async function sendReservationApologyEmail(bookingId, alternativesInput = []) {
 
   const settings = await readSettings();
   const config = extractSyncSettings(settings || {});
-  if (!config.baseUrl) throw new Error('sync.baseUrl is required in settings.json');
+  if (!config.baseUrl) throw new Error('sync.baseUrl (or sync.URL) is required in settings.json');
   if (!config.email || !config.password) throw new Error('sync.email and sync.password are required in settings.json');
 
   const auth = await syncLoginRequest(config.baseUrl, {
@@ -3980,16 +3986,95 @@ function normalizeSyncBaseUrl(value) {
   return `http://${trimmed}`;
 }
 
-function extractSyncSettings(settings) {
+function isLocalSyncBaseUrl(value) {
+  const normalized = normalizeSyncBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function readTextSetting(source, names = []) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return '';
+  const keys = Object.keys(source);
+  const keyByLowerName = new Map(keys.map((key) => [key.toLowerCase(), key]));
+  for (const name of names) {
+    const exactValue = source[name];
+    if (exactValue !== undefined && exactValue !== null && exactValue !== '') {
+      return normalizeText(exactValue, '');
+    }
+    const realKey = keyByLowerName.get(String(name).toLowerCase());
+    if (!realKey) continue;
+    const value = source[realKey];
+    if (value !== undefined && value !== null && value !== '') {
+      return normalizeText(value, '');
+    }
+  }
+  return '';
+}
+
+function extractExplicitSyncSettings(settings) {
   const syncSettings =
     settings?.sync && typeof settings.sync === 'object' && !Array.isArray(settings.sync) ? settings.sync : {};
   const baseUrl = normalizeSyncBaseUrl(
-    syncSettings.baseUrl || settings?.syncBaseUrl || settings?.serverBaseUrl || settings?.baseUrl || ''
+    readTextSetting(syncSettings, ['baseUrl', 'baseURL', 'url', 'URL', 'apiUrl', 'apiURL', 'serverUrl', 'serverURL']) ||
+      readTextSetting(settings, [
+        'syncBaseUrl',
+        'syncBaseURL',
+        'syncUrl',
+        'syncURL',
+        'serverBaseUrl',
+        'serverBaseURL',
+        'baseUrl',
+        'baseURL',
+        'url',
+        'URL'
+      ])
   );
-  const email = normalizeText(syncSettings.email || settings?.syncEmail || settings?.email || '', '');
-  const password = normalizeText(syncSettings.password || settings?.syncPassword || settings?.password || '', '');
-  const orgId = normalizeText(syncSettings.orgId || settings?.syncOrgId || settings?.orgId || '', '');
+  const email =
+    readTextSetting(syncSettings, ['email', 'Email', 'user', 'username']) ||
+    readTextSetting(settings, ['syncEmail', 'email', 'Email', 'user', 'username']);
+  const password =
+    readTextSetting(syncSettings, ['password', 'Password', 'pass']) ||
+    readTextSetting(settings, ['syncPassword', 'password', 'Password', 'pass']);
+  const orgId =
+    readTextSetting(syncSettings, ['orgId', 'orgID', 'organizationId', 'organizationID']) ||
+    readTextSetting(settings, ['syncOrgId', 'syncOrgID', 'orgId', 'orgID', 'organizationId', 'organizationID']);
   return { baseUrl, email, password, orgId };
+}
+
+function extractEnvironmentSyncSettings() {
+  const baseUrl = normalizeSyncBaseUrl(
+    process.env.DESKTOP_SYNC_BASE_URL ||
+      process.env.DESKTOP_SYNC_URL ||
+      process.env.SYNC_BASE_URL ||
+      process.env.SYNC_URL ||
+      ''
+  );
+  const email = normalizeText(process.env.DESKTOP_SYNC_EMAIL || process.env.SYNC_EMAIL || '', '');
+  const password = normalizeText(process.env.DESKTOP_SYNC_PASSWORD || process.env.SYNC_PASSWORD || '', '');
+  const orgId = normalizeText(
+    process.env.DESKTOP_SYNC_ORG_ID || process.env.SYNC_ORG_ID || process.env.DEFAULT_ORG_ID || '',
+    ''
+  );
+  return { baseUrl, email, password, orgId };
+}
+
+function extractSyncSettings(settings) {
+  const explicit = extractExplicitSyncSettings(settings || {});
+  const environment = extractEnvironmentSyncSettings();
+  const configuredBaseUrl = explicit.baseUrl || environment.baseUrl;
+  const forceProductionBaseUrl = !configuredBaseUrl || (app.isPackaged && isLocalSyncBaseUrl(configuredBaseUrl));
+  return {
+    baseUrl: forceProductionBaseUrl ? PRODUCTION_SYNC_BASE_URL : configuredBaseUrl,
+    email: explicit.email || environment.email,
+    password: explicit.password || environment.password,
+    orgId: explicit.orgId || environment.orgId
+  };
 }
 
 function buildSyncUrl(baseUrl, pathname, searchParams = null) {
@@ -4090,12 +4175,12 @@ function describeSyncNetworkError(url, error) {
   const causeMessage = normalizeText(error?.cause?.message || error?.message || '', '');
   const codeText = code ? ` ${code}` : '';
   const messageText = causeMessage ? `: ${causeMessage}` : '';
-  let hint = 'Check sync.baseUrl and make sure the AdventureWebsite API is running.';
+  let hint = 'Check sync.baseUrl or sync.URL and make sure the AdventureWebsite API is running.';
 
   if (code === 'ECONNREFUSED') {
-    hint = 'Nothing is listening at that address. Start the AdventureWebsite API or update sync.baseUrl.';
+    hint = 'Nothing is listening at that address. Start the AdventureWebsite API or update sync.baseUrl / sync.URL.';
   } else if (code === 'ENOTFOUND') {
-    hint = 'The host name could not be resolved. Check sync.baseUrl.';
+    hint = 'The host name could not be resolved. Check sync.baseUrl / sync.URL.';
   } else if (code === 'DEPTH_ZERO_SELF_SIGNED_CERT' || code === 'SELF_SIGNED_CERT_IN_CHAIN') {
     hint = 'The HTTPS certificate is not trusted by Electron.';
   }
@@ -5414,7 +5499,7 @@ const sync = {
       const settings = await readSettings();
       const config = extractSyncSettings(settings || {});
       if (!config.baseUrl) {
-        return { ok: false, error: 'sync.baseUrl is required in settings.json' };
+        return { ok: false, error: 'sync.baseUrl (or sync.URL) is required in settings.json' };
       }
       if (!config.email || !config.password) {
         return { ok: false, error: 'sync.email and sync.password are required in settings.json' };

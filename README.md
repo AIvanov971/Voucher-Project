@@ -82,7 +82,16 @@ Add sync settings to settings.json:
 }
 ```
 
+`sync.baseUrl` is preferred, but Windows/customer configs can also use `sync.URL`, `sync.url`, or `sync.baseURL`.
+If no URL is configured, packaged builds default to `https://adventure-website-api.vercel.app`.
+
 On macOS, packaged builds read this from `~/Library/Application Support/LN software/settings.json`.
+On Windows, packaged builds read this from `%APPDATA%\LN software\settings.json`.
+As a fallback, the Windows app also checks for `settings.json` next to `LN software.exe`.
+Windows/macOS build commands run `scripts/prepare-bundled-settings.js` first. That script creates an ignored
+`build/settings.json` from build environment variables, the current machine's app settings, or the sibling
+AdventureWebsite `.env`, then packages it into the installer so a fresh Windows install can sync without manually
+creating `%APPDATA%\LN software\settings.json`.
 Local development runs may read `~/Library/Application Support/LNvoucher-maker/settings.json`; the app now falls back between both locations.
 
 For local sync, keep the AdventureWebsite API running at the configured `baseUrl`:
